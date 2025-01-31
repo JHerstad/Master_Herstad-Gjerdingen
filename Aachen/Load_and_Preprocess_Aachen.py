@@ -232,20 +232,7 @@ if __name__ == "__main__":
         phase=None,
         log_transform=False
     )
-    print("Shapes with log_transform=False:")
     print("  X_train:", preprocessed_full["X_train"].shape)
     print("  X_val:  ", preprocessed_full["X_val"].shape)
     print("  X_test: ", preprocessed_full["X_test"].shape)
 
-    # Full dataset, with log transform
-    preprocessed_log = preprocess_aachen_dataset(
-        "Aachen/Degradation_Prediction_Dataset_ISEA.mat",
-        test_cell_count=3,
-        random_state=42,
-        phase=None,
-        log_transform=True  # <--- apply log to the RUL values
-    )
-    print("Shapes with log_transform=True:")
-    print("  X_train:", preprocessed_log["X_train"].shape)
-    print("  X_val:  ", preprocessed_log["X_val"].shape)
-    print("  X_test: ", preprocessed_log["X_test"].shape)

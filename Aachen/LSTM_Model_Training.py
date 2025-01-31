@@ -1,13 +1,22 @@
-# Import the required libraries
-from tensorflow.keras.models import Sequential
+# Standard library imports
+import os
+import time
+
+# Third-party imports
+import pandas as pd
+import matplotlib.pyplot as plt
+import shap
+
+# TensorFlow/Keras imports
+from tensorflow.keras.models import Sequential, model_from_json
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-import matplotlib.pyplot as plt
-import pandas as pd
+import tensorflow as tf
 
 # Import the dataset preprocessing function
 from Load_and_Preprocess_Aachen import preprocess_aachen_dataset
+
 
 
 # Configurable parameters
@@ -29,7 +38,7 @@ def build_model(input_shape, config):
     """Build and compile the LSTM model."""
     model = Sequential([
         Masking(mask_value=0.0, input_shape=input_shape),
-        LSTM(config["lstm_units"], activation='tanh', return_sequences=False),
+        LSTM(config["lstm_units"], activation='tanh', recurrent_activation='sigmoid', return_sequences=False, unroll=True),
         Dropout(config["dropout_rate"]),
         Dense(config["dense_units"], activation='tanh'),
         Dense(1)  # Output layer for regression
@@ -78,82 +87,8 @@ def plot_residuals(y_test, y_pred):
     plt.show()
 
 
-def main():
-    # Load configuration
-    config = get_config()
-
-    # Load and preprocess the Aachen dataset
-    aachen_data = preprocess_aachen_dataset(
-        "/Users/johannesherstad/Master_Herstad-Gjerdingen/Aachen/Degradation_Prediction_Dataset_ISEA.mat",
-        test_cell_count=3,
-        random_state=42,
-        phase=None,
-        log_transform=True,
-    )
-
-    # Extract the preprocessed data
-    X_train_lstm = aachen_data["X_train"]
-    X_val_lstm = aachen_data["X_val"]
-    X_test_lstm = aachen_data["X_test"]
-    y_train = aachen_data["y_train"]
-    y_val = aachen_data["y_val"]
-    y_test = aachen_data["y_test"]
-    y_max = aachen_data["y_max"]
-
-    # Build the model
-    model = build_model(X_train_lstm.shape[1:], config)
-
-    # Define callbacks
-    callbacks = [
-        EarlyStopping(monitor='val_loss', patience=config["patience"], restore_best_weights=True),
-        ModelCheckpoint("best_model.h5", save_best_only=True, monitor="val_loss", verbose=1)
-    ]
-
-    # Train the model
-    history = model.fit(
-        X_train_lstm, y_train,
-        validation_data=(X_val_lstm, y_val),
-        epochs=config["epochs"],
-        batch_size=config["batch_size"],
-        verbose=1,
-        callbacks=callbacks
-    )
-
-    # Plot training history
-    plot_training_history(history)
-
-    # Evaluate the model on the test set
-    test_loss, test_mae = model.evaluate(X_test_lstm, y_test, verbose=1)
-    print(f"\nTest Loss: {test_loss}")
-    print(f"Test MAE: {test_mae}")
-
-    # Make predictions on the test set
-    y_pred = model.predict(X_test_lstm)
-
-    # Rescale predictions and test data back to the original range
-    y_pred_rescaled = y_pred.flatten() * y_max
-    y_test_rescaled = y_test * y_max
-
-    # Compare actual and predicted values
-    results = pd.DataFrame({
-        "Actual RUL80": y_test_rescaled,
-        "Predicted RUL80": y_pred_rescaled
-    })
-    print(results.head())
-
-    # Plot predictions vs actual
-    plot_predictions_vs_actual(y_test_rescaled, y_pred_rescaled)
-
-    # Plot residuals
-    plot_residuals(y_test_rescaled, y_pred_rescaled)
 
 
-
-
-
-## SHAP Analysis
-import shap
-import numpy as np
 
 def explain_with_shap(model, X_train, X_test):
     """Explain the model predictions using SHAP."""
@@ -169,9 +104,7 @@ def explain_with_shap(model, X_train, X_test):
     # Detailed feature contributions for a specific sample
     shap.force_plot(explainer.expected_value[0], shap_values[0][0], X_test[0])
 
-import time
-from tensorflow.keras.models import model_from_json
-import os
+
 
 def get_unique_model_name(base_name="model", directory="Aachen/Models"):
     """Generate a unique model name based on the current timestamp."""
@@ -184,7 +117,7 @@ def save_model_structure_and_weights(model, model_name):
     os.makedirs(os.path.dirname(model_name), exist_ok=True)
 
     # Save model structure
-    structure_file = f"{model_name}_structure.json"
+    structure_file = f"{model_name}.structure.json"
     with open(structure_file, "w") as json_file:
         json_file.write(model.to_json())
     print(f"Model structure saved to {structure_file}")
@@ -238,7 +171,7 @@ def main():
         test_cell_count=3,
         random_state=42,
         phase="Mid",
-        log_transform=True,
+        log_transform=False,
     )
 
     # Extract the preprocessed data
@@ -251,8 +184,8 @@ def main():
     y_max = aachen_data["y_max"]
 
     # Define model name for loading
-    model_name = "Aachen/Models/LSTM_Model_20250127_103530"
-    #model_name = None
+    model_name = None
+    model_name = "Aachen/Models/model_20250127_135003"
 
     if model_name is None:
         model_name = get_unique_model_name()
@@ -314,6 +247,19 @@ def main():
 
     # Plot residuals
     plot_residuals(y_test_rescaled, y_pred_rescaled)
+
+
+    print(model.summary())
+
+
+    # Disable eager execution for SHAP
+    tf.compat.v1.disable_eager_execution()
+
+    # Explain the model predictions using SHAP
+    explain_with_shap(model, X_train_lstm, X_test_lstm)
+
+
+
 
 if __name__ == "__main__":
     main()
