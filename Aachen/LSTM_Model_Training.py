@@ -9,7 +9,7 @@ import shap
 
 # TensorFlow/Keras imports
 from tensorflow.keras.models import Sequential, model_from_json
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking, Input
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import tensorflow as tf
@@ -37,8 +37,9 @@ def get_config():
 def build_model(input_shape, config):
     """Build and compile the LSTM model."""
     model = Sequential([
-        Masking(mask_value=0.0, input_shape=input_shape),
-        LSTM(config["lstm_units"], activation='tanh', recurrent_activation='sigmoid', return_sequences=False, unroll=True),
+        Input(shape=input_shape),
+        Masking(mask_value=0.0),
+        LSTM(config["lstm_units"], activation='tanh', recurrent_activation='sigmoid', return_sequences=False, unroll=False),
         Dropout(config["dropout_rate"]),
         Dense(config["dense_units"], activation='tanh'),
         Dense(1)  # Output layer for regression
