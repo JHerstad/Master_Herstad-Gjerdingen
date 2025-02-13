@@ -5,7 +5,7 @@ import time
 # Third-party imports
 import pandas as pd
 import matplotlib.pyplot as plt
-#import shap
+#import shap  # Uncomment if you want to use SHAP
 
 # TensorFlow/Keras imports
 from tensorflow.keras.models import Sequential, model_from_json
@@ -14,12 +14,10 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import tensorflow as tf
 
-# Import the dataset preprocessing function
+# Import the dataset preprocessing function (now with dynamic eol_capacity)
 from Load_and_Preprocess_Aachen import preprocess_aachen_dataset
 
 
-
-# Configurable parameters
 def get_config():
     """Return a dictionary of configurable parameters."""
     return {
@@ -39,7 +37,13 @@ def build_model(input_shape, config):
     model = Sequential([
         Input(shape=input_shape),
         Masking(mask_value=0.0),
-        LSTM(config["lstm_units"], activation='tanh', recurrent_activation='sigmoid', return_sequences=False, unroll=False),
+        LSTM(
+            config["lstm_units"], 
+            activation='tanh', 
+            recurrent_activation='sigmoid', 
+            return_sequences=False, 
+            unroll=False
+        ),
         Dropout(config["dropout_rate"]),
         Dense(config["dense_units"], activation='tanh'),
         Dense(1)  # Output layer for regression
@@ -63,14 +67,14 @@ def plot_training_history(history):
 
 
 def plot_predictions_vs_actual(y_test, y_pred):
-    """Scatterplot comparing actual vs. predicted values."""
+    """Scatterplot comparing actual vs. predicted RUL."""
     plt.figure(figsize=(8, 6))
     plt.scatter(y_test, y_pred, alpha=0.7)
     plt.plot([y_test.min(), y_test.max()],
              [y_test.min(), y_test.max()], 'r--', label='Perfect Prediction')
-    plt.title("Predicted vs Actual RUL80")
-    plt.xlabel("Actual RUL80")
-    plt.ylabel("Predicted RUL80")
+    plt.title("Predicted vs Actual RUL")
+    plt.xlabel("Actual RUL")
+    plt.ylabel("Predicted RUL")
     plt.legend()
     plt.grid()
     plt.show()
@@ -88,23 +92,13 @@ def plot_residuals(y_test, y_pred):
     plt.show()
 
 
-
-
-
-def explain_with_shap(model, X_train, X_test):
-    """Explain the model predictions using SHAP."""
-    # Create a SHAP explainer
-    explainer = shap.DeepExplainer(model, X_train[:100])  # Use a representative subset of X_train
-    
-    # Compute SHAP values for the test set
-    shap_values = explainer.shap_values(X_test)
-    
-    # Summarize feature importance
-    shap.summary_plot(shap_values[0], X_test, plot_type="bar")
-    
-    # Detailed feature contributions for a specific sample
-    shap.force_plot(explainer.expected_value[0], shap_values[0][0], X_test[0])
-
+# If using SHAP, uncomment the lines below
+# def explain_with_shap(model, X_train, X_test):
+#     """Explain the model predictions using SHAP."""
+#     explainer = shap.DeepExplainer(model, X_train[:100])  
+#     shap_values = explainer.shap_values(X_test)
+#     shap.summary_plot(shap_values[0], X_test, plot_type="bar")
+#     shap.force_plot(explainer.expected_value[0], shap_values[0][0], X_test[0])
 
 
 def get_unique_model_name(base_name="model", directory="Aachen/Models"):
@@ -135,32 +129,24 @@ def load_model_structure_and_weights(model_name, directory="Aachen/Models"):
     if not os.path.dirname(model_name):  # If no directory in model_name
         model_name = os.path.join(directory, model_name)
 
-    # Load model structure and weights paths
     structure_file = f"{model_name}.structure.json"
     weights_file = f"{model_name}.weights.h5"
 
-    # Print the paths being checked
     print("Checking for model files in the following paths:")
     print(f"Structure file: {structure_file}")
     print(f"Weights file: {weights_file}")
-
-    # Print the contents of the directory
-    directory = os.path.dirname(structure_file)
-    print(f"Contents of directory '{directory}':")
-    print(os.listdir(directory) if os.path.exists(directory) else "Directory does not exist.")
 
     # Check if files exist
     if not os.path.exists(structure_file) or not os.path.exists(weights_file):
         raise FileNotFoundError("Model structure or weights file not found.")
 
-    # Load model structure
     with open(structure_file, "r") as json_file:
         model = model_from_json(json_file.read())
 
-    # Load model weights
     model.load_weights(weights_file)
     print(f"Model loaded from {structure_file} and {weights_file}")
     return model
+
 
 def main():
     # Load configuration
@@ -168,11 +154,12 @@ def main():
 
     # Load and preprocess the Aachen dataset
     aachen_data = preprocess_aachen_dataset(
-        "/Users/johannesherstad/Master_Herstad-Gjerdingen/Aachen/Degradation_Prediction_Dataset_ISEA.mat",
+        file_path="/Users/johannesherstad/Master_Herstad-Gjerdingen/Aachen/Degradation_Prediction_Dataset_ISEA.mat",
         test_cell_count=3,
         random_state=42,
-        phase="Mid",
+        phase="mid",          # Must be lowercase: 'early', 'mid', or 'late'
         log_transform=False,
+        eol_capacity=0.65     # Adjust this to 0.80 or any other fraction as needed
     )
 
     # Extract the preprocessed data
@@ -184,14 +171,14 @@ def main():
     y_test = aachen_data["y_test"]
     y_max = aachen_data["y_max"]
 
-    # Define model name for loading
+    # Optionally, specify a known model name to load a pre-trained model instead
     model_name = None
-    model_name = "Aachen/Models/model_20250127_135003"
+    # model_name = "Aachen/Models/model_20250127_135003"  # Example
 
     if model_name is None:
         model_name = get_unique_model_name()
 
-    # Check if a trained model exists
+    # Attempt to load a pre-trained model
     try:
         print("Attempting to load pre-trained model...")
         model = load_model_structure_and_weights(model_name)
@@ -238,9 +225,10 @@ def main():
 
     # Compare actual and predicted values
     results = pd.DataFrame({
-        "Actual RUL80": y_test_rescaled,
-        "Predicted RUL80": y_pred_rescaled
+        "Actual RUL": y_test_rescaled,
+        "Predicted RUL": y_pred_rescaled
     })
+    print("\nHead of predictions vs. actual:")
     print(results.head())
 
     # Plot predictions vs actual
@@ -249,17 +237,12 @@ def main():
     # Plot residuals
     plot_residuals(y_test_rescaled, y_pred_rescaled)
 
-
+    # Print model summary
     print(model.summary())
 
-
-    # Disable eager execution for SHAP
-    tf.compat.v1.disable_eager_execution()
-
-    # Explain the model predictions using SHAP
-    #explain_with_shap(model, X_train_lstm, X_test_lstm)
-
-
+    # If you want to use SHAP for explainability, uncomment these lines:
+    # tf.compat.v1.disable_eager_execution()
+    # explain_with_shap(model, X_train_lstm, X_test_lstm)
 
 
 if __name__ == "__main__":
