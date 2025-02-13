@@ -5,7 +5,7 @@ import time
 # Third-party imports
 import pandas as pd
 import matplotlib.pyplot as plt
-import shap
+#import shap
 
 # TensorFlow/Keras imports
 from tensorflow.keras.models import Sequential, model_from_json
@@ -257,7 +257,7 @@ def main():
     tf.compat.v1.disable_eager_execution()
 
     # Explain the model predictions using SHAP
-    explain_with_shap(model, X_train_lstm, X_test_lstm)
+    #explain_with_shap(model, X_train_lstm, X_test_lstm)
 
 
 
