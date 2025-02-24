@@ -182,7 +182,7 @@ def compute_event_explanation(
     data : np.ndarray
         Test sequences with shape (n_samples, seq_len, 1).
     baseline : Union[pd.DataFrame, np.ndarray]
-        Baseline data (e.g., an average event or sequence).
+        Baseline data (e.g., an average event or sequence), shape (seq_len, 1) or (1, seq_len, 1).
     relative : bool, optional
         If True, compute normalized (binned) event explanations.
         If False, compute absolute event explanations.
@@ -205,16 +205,28 @@ def compute_event_explanation(
     event_data_list = []
     pruning_idx = 0  # Fixed pruning index (no pruning)
     
+    # Ensure baseline is a numpy array and handle its shape
+    if isinstance(baseline, pd.DataFrame):
+        baseline = baseline.to_numpy()
+    if baseline.ndim == 2:  # Shape (288, 1)
+        baseline = baseline
+    elif baseline.ndim == 3:  # Shape (1, 288, 1)
+        baseline = baseline.squeeze(0)  # Convert to (288, 1)
+
     for i, sequence in enumerate(data):
         sequence = sequence.astype(np.float64)
-        mask = ~np.all(sequence == 0, axis=-1)
-        trimmed_seq = sequence[mask, :][np.newaxis, :, :]
+        mask = ~np.all(sequence == 0, axis=-1)  # Mask zero-padded time steps
+        trimmed_seq = sequence[mask, :][np.newaxis, :, :]  # Shape (1, L, 1)
         
-        current_event_data = local_event_explainer(f, trimmed_seq, baseline, pruning_idx, random_seed, nsamples)
+        # Trim baseline to match trimmed_seq length
+        L = trimmed_seq.shape[1]  # Length of the trimmed sequence
+        trimmed_baseline = baseline[:L].reshape(1, L, 1)  # Trim and reshape to (1, L, 1)
+
+        # Compute local event explanation with trimmed baseline
+        current_event_data = local_event_explainer(f, trimmed_seq, trimmed_baseline, pruning_idx, random_seed, nsamples)
         current_event_data = current_event_data.reset_index().rename(columns={'index': 'Event Number'})
         
         if relative:
-            L = trimmed_seq.shape[1]
             current_event_data['Relative Position'] = (current_event_data['Event Number'] / (L - 1)) if L > 1 else 0.0
             if verbose:
                 print(f"Sequence {i}: original length = {sequence.shape[0]}, trimmed length = {L}, "
