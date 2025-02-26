@@ -1,17 +1,11 @@
 import numpy as np
 import pandas as pd
-from typing import Callable, Union, Optional, Tuple
+from typing import Callable, Union, Optional
 from timeshap.explainer.kernel import TimeShapKernel
 from Load_and_Preprocess_Aachen import preprocess_aachen_dataset
-from LSTM_Model_Training import load_model_structure_and_weights, plot_predictions_vs_actual, plot_residuals
+from LSTM_Model_Training import load_model_structure_and_weights
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
-
-def plot_predictions(y_test_rescaled: np.ndarray, y_pred_rescaled: np.ndarray) -> None:
-    """Plots predictions vs actual values and their residuals."""
-    plot_predictions_vs_actual(y_test_rescaled, y_pred_rescaled)
-    plot_residuals(y_test_rescaled, y_pred_rescaled)
 
 
 def avg_rul(X_train: np.ndarray) -> np.ndarray:
