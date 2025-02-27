@@ -1,17 +1,19 @@
 """
 Module for preprocessing the Aachen battery degradation dataset for RUL classification or regression.
-Handles data loading, EOL/RUL computation, binning, splitting, normalization, encoding, and padding
+Handles data loading, EOL/RUL computation, binning, splitting, normalization, and encoding
 for both classification (CNN) and regression (LSTM) models with a configurable sequence length.
 """
 
 import numpy as np
 import pandas as pd
-from keras.preprocessing.sequence import pad_sequences
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.utils import to_categorical
+import mat4py
 from typing import Dict, Optional, Tuple
+from tensorflow.keras.utils import to_categorical
 from config.defaults import Config  # Assuming Config is defined in config/defaults.py
+import os
+import json
+import datetime
 
 
 def compute_eol_and_rul(row: pd.Series, fraction: float) -> pd.Series:
@@ -20,181 +22,152 @@ def compute_eol_and_rul(row: pd.Series, fraction: float) -> pd.Series:
     based on a specified capacity threshold fraction of initial capacity.
 
     Args:
-        row (pd.Series): DataFrame row containing 'History', 'History_Cycle',
-                        'Target_expanded', and 'Target_Cycle_Expanded' columns as lists or arrays.
+        row (pd.Series): Row containing 'History', 'History_Cycle', 'Target_expanded',
+                        and 'Target_Cycle_Expanded' as lists or arrays.
         fraction (float): Fraction of initial capacity defining EOL (e.g., 0.65 for 65%).
 
     Returns:
-        pd.Series: Dictionary-like series with 'EOL' and 'RUL' values (NaN if invalid).
+        pd.Series: A series containing 'EOL' (cycle number of failure) and 'RUL' (cycles remaining).
     """
     history_cap = np.array(row["History"])
     history_cycles = np.array(row["History_Cycle"])
     target_cap = np.array(row["Target_expanded"])
     target_cycles = np.array(row["Target_Cycle_Expanded"])
 
-    # Handle edge cases: empty or missing data
-    if len(history_cap) == 0 or len(history_cycles) == 0:
+    # Handle missing or empty data
+    if not history_cap.size or not history_cycles.size:
         return pd.Series({"EOL": np.nan, "RUL": np.nan})
 
-    # Calculate EOL threshold as fraction of initial capacity
+    # Define EOL as the first cycle where capacity drops below the threshold
     initial_capacity = history_cap[0]
     threshold = fraction * initial_capacity
 
-    # Check if last historical capacity is already below threshold (no future RUL possible)
+    # If last known capacity is already below threshold, RUL is undefined
     if history_cap[-1] <= threshold:
         return pd.Series({"EOL": np.nan, "RUL": np.nan})
 
-    # Handle target data edge cases
-    if len(target_cap) == 0 or len(target_cycles) == 0:
+    if not target_cap.size or not target_cycles.size:
         return pd.Series({"EOL": np.nan, "RUL": np.nan})
 
-    # Find the first index in target capacity where it drops below the threshold
+    # Find EOL cycle (first occurrence below threshold)
     below_threshold_indices = np.where(target_cap < threshold)[0]
-    eol_cycle = np.nan
-    if len(below_threshold_indices) > 0:
-        eol_index = below_threshold_indices[0]
-        eol_cycle = target_cycles[eol_index]
+    eol_cycle = target_cycles[below_threshold_indices[0]] if below_threshold_indices.size else np.nan
 
-    # Compute RUL as EOL cycle minus last historical cycle
-    rul = np.nan
-    if not pd.isna(eol_cycle):
-        last_history_cycle = history_cycles[-1]
-        rul = eol_cycle - last_history_cycle
+    # Compute RUL as the difference between EOL cycle and the last recorded cycle
+    rul = eol_cycle - history_cycles[-1] if not np.isnan(eol_cycle) else np.nan
 
     return pd.Series({"EOL": eol_cycle, "RUL": rul})
 
 
-def truncate_sequence(seq: np.ndarray, seq_len: int) -> np.ndarray:
+def process_sequences(df: pd.DataFrame, seq_len: int) -> np.ndarray:
     """
-    Truncates a sequence to the specified length, taking the last seq_len time steps.
+    Truncates and normalizes battery capacity sequences to a fixed length.
 
     Args:
-        seq (np.ndarray): Input sequence (e.g., capacity values).
-        seq_len (int): Length of sequences to truncate to.
+        df (pd.DataFrame): DataFrame containing a 'History' column with capacity degradation sequences.
+        seq_len (int): Length to truncate each sequence to.
 
     Returns:
-        np.ndarray: Sequence truncated to the last seq_len steps.
-    """
-    return seq[-seq_len:]
-
-
-def prepare_data_classification(df: pd.DataFrame, seq_len: int) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Prepares data for training a classification model (CNN) by filtering sequences, truncating
-    to a fixed length, stacking into a NumPy array, and reshaping for input.
-
-    Args:
-        df (pd.DataFrame): DataFrame with 'History', 'RUL_binned_int' columns.
-        seq_len (int): Length of sequences to truncate to.
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray]: X (shape: (samples, seq_len, 1)), y (shape: (samples,)).
+        np.ndarray: Array of normalized and truncated sequences, shape (num_samples, seq_len).
     """
     # Filter rows with sufficient length and create a copy
     df_filtered = df[df["History"].apply(lambda x: len(x) >= seq_len)].copy()
 
-    # Truncate history to the last seq_len steps
-    df_filtered[f"History_{seq_len}"] = df_filtered["History"].apply(lambda x: truncate_sequence(x, seq_len))
+    # Truncate sequences to the last seq_len steps
+    df_filtered["History_truncated"] = df_filtered["History"].apply(lambda x: x[-seq_len:])
 
-    # Stack sequences into a NumPy array and reshape for classification (add channel dimension)
-    X = np.stack(df_filtered[f"History_{seq_len}"].values, axis=0)
-    X = X.reshape((X.shape[0], X.shape[1], 1))
+    # Stack sequences into a NumPy array
+    sequences = np.stack(df_filtered["History_truncated"].values, axis=0)
 
-    # Extract labels
-    y = df_filtered["RUL_binned_int"].values
+    # Normalize sequences using MinMaxScaler fitted on all sequences
+    scaler = MinMaxScaler()
+    sequences_normalized = scaler.fit_transform(sequences.reshape(-1, 1)).reshape(sequences.shape)
 
+    return sequences_normalized
+
+
+def prepare_data_classification(df: pd.DataFrame, seq_len: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Prepares battery degradation data for classification, including normalization.
+
+    Args:
+        df (pd.DataFrame): Filtered DataFrame containing capacity history and RUL bin labels.
+        seq_len (int): Sequence length for truncation and normalization.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: X (shape: (samples, seq_len, 1)), y (shape: (samples,)),
+                                    where X is normalized input sequences and y is one-hot encoded
+                                    classification labels.
+    """
+    # Process and normalize sequences
+    X = process_sequences(df, seq_len).reshape(-1, seq_len, 1)  # Reshape for CNN input
+    y = df["RUL_binned_int"].values  # Classification labels
     return X, y
 
 
-def prepare_data_regression(df: pd.DataFrame, seq_len: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+def prepare_data_regression(df: pd.DataFrame, seq_len: int) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Prepares data for training a regression model (LSTM) by extracting sequences and labels,
-    preserving variable sequence lengths for padding, optionally truncating to seq_len.
+    Prepares battery degradation data for regression, including normalization.
 
     Args:
-        df (pd.DataFrame): DataFrame with 'History', 'RUL_binned_int' columns.
-        seq_len (Optional[int]): Length of sequences to truncate to, or None for maximum length.
+        df (pd.DataFrame): Filtered DataFrame containing capacity history and RUL values.
+        seq_len (int): Sequence length for truncation and normalization.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray]: X (shape: (samples, max_seq_len, 1)), y (shape: (samples,)).
+        Tuple[np.ndarray, np.ndarray]: X (shape: (samples, seq_len, 1)), y (shape: (samples,)),
+                                    where X is normalized input sequences and y is the corresponding
+                                    RUL values.
     """
-    # Extract sequences and labels
-    histories = df["History"].tolist()
-    y = df["RUL_binned_int"].values
-
-    # Truncate or keep full sequences based on seq_len
-    if seq_len is not None:
-        histories = [truncate_sequence(h, seq_len) for h in histories]
-
-    # Flatten all histories for scaling
-    all_histories_flat = np.concatenate(histories)
-    scaler = MinMaxScaler()
-    scaler.fit(all_histories_flat.reshape(-1, 1))
-
-    # Normalize sequences
-    normalized_histories = [
-        scaler.transform(np.array(h).reshape(-1, 1)).flatten() for h in histories
-    ]
-
-    # Pad sequences to the maximum length or specified seq_len
-    max_sequence_length = max(len(h) for h in normalized_histories) if seq_len is None else seq_len
-    X_padded = pad_sequences(
-        normalized_histories,
-        maxlen=max_sequence_length,
-        padding="post",
-        dtype="float32"
-    )
-
-    # Reshape for regression input (add channel dimension)
-    X_lstm = X_padded[..., np.newaxis]
-
-    return X_lstm, y
+    # Process and normalize sequences
+    X = process_sequences(df, seq_len).reshape(-1, seq_len, 1)  # Reshape for LSTM input
+    y = df["RUL"].values  # Regression labels
+    return X, y
 
 
 def preprocess_aachen_dataset(
     data_path: str,
-    eol_capacity: float = 0.65,
     test_cell_count: int = 3,
     random_state: int = 42,
     log_transform: bool = False,
-    classification: bool = False  # True for classification (CNN), False for regression (LSTM, default)
+    classification: bool = False
 ) -> Dict:
     """
-    Loads and preprocesses the Aachen battery degradation dataset for RUL classification or regression,
-    supporting both classification (CNN, fixed sequence length) and regression (LSTM, variable-length
-    padded sequences).
+    Loads and preprocesses the Aachen dataset for RUL classification or regression,
+    supporting both classification (CNN, fixed sequence length) and regression (LSTM, fixed-length
+    padded sequences). Automatically stores preprocessed data in data/processed/ for reproducibility.
 
     Args:
         data_path (str): Path to the '.mat' file containing the dataset.
-        eol_capacity (float): Fraction of initial capacity defining EOL (e.g., 0.65 for 65%).
         test_cell_count (int): Number of unique cells to hold out for testing.
         random_state (int): Seed for random operations.
         log_transform (bool): Whether to apply log transform to RUL values for regression.
         classification (bool): If True, prepare data for classification (CNN) with fixed sequence length
-                             from config; if False, prepare for regression (LSTM) with variable length.
+                             from config; if False, prepare for regression (LSTM) with fixed sequence length.
 
     Returns:
         Dict: Preprocessed data including X_train, X_val, X_test, y_train, y_val, y_test,
-              y_max, label_mapping (for classification), df_filtered, and max_sequence_length (for regression).
+              y_max, label_mapping (for classification), df_filtered, and max_sequence_length (for both).
     """
     # Set random seed for reproducibility
     np.random.seed(random_state)
 
     # Load dataset into a pandas DataFrame
-    data_loader = mpy.loadmat(data_path)
+    data_loader = mat4py.loadmat(data_path)
     df = pd.DataFrame.from_dict(data_loader["TDS"])
 
     # Compute EOL and RUL, filter invalid entries
-    df[["EOL", "RUL"]] = df.apply(compute_eol_and_rul, axis=1)
+    config = Config()
+    eol_capacity = config.eol_capacity
+    seq_len = config.seq_len
+
+    df[["EOL", "RUL"]] = df.apply(compute_eol_and_rul, axis=1, fraction=eol_capacity)
     df_filtered = df.dropna(subset=["RUL"])
 
-    # Filter sequences with sufficient length (minimum seq_len for classification, any for regression)
-    config = Config()  # Access config for sequence length
-    seq_len = config.seq_len  # Use configurable sequence length from config
-    min_seq_len = seq_len if classification else 0
-    df_filtered = df_filtered[df_filtered["History"].apply(lambda x: len(x) >= min_seq_len)]
+    # Filter sequences based on seq_len
+    df_filtered = df_filtered[df_filtered["History"].apply(lambda x: len(x) >= seq_len)]
 
     # Define RUL bins and labels for classification only
+    label_mapping = None
     if classification:
         bins = [0, 200, 300, 400, 500, 600, 700, np.inf]
         labels = ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"]
@@ -232,27 +205,8 @@ def preprocess_aachen_dataset(
         X_val, y_val = prepare_data_regression(df_val, seq_len)
         X_test, y_test = prepare_data_regression(df_test, seq_len)
 
-    # Normalize sequences using MinMaxScaler fitted on training data
-    scaler = MinMaxScaler()
+    # Apply one-hot encoding only if classification
     if classification:
-        X_train_2d = X_train.reshape(-1, 1)
-    else:
-        X_train_2d = X_train.reshape(-1, 1)  # Flatten for scaling, preserving variable length
-    scaler.fit(X_train_2d)
-
-    # Transform and reshape sequences
-    if classification:
-        X_train = scaler.transform(X_train_2d).reshape(X_train.shape)
-        X_val = scaler.transform(X_val.reshape(-1, 1)).reshape(X_val.shape)
-        X_test = scaler.transform(X_test.reshape(-1, 1)).reshape(X_test.shape)
-    else:
-        X_train = scaler.transform(X_train_2d).reshape(X_train.shape)
-        X_val = scaler.transform(X_val.reshape(-1, 1)).reshape(X_val.shape)
-        X_test = scaler.transform(X_test.reshape(-1, 1)).reshape(X_test.shape)
-
-    # Handle labels based on model type (classification for classification, regression for regression)
-    if classification:
-        # One-hot encode labels for classification
         num_classes = len(label_mapping)
         y_train = to_categorical(y_train, num_classes=num_classes)
         y_val = to_categorical(y_val, num_classes=num_classes)
@@ -273,7 +227,8 @@ def preprocess_aachen_dataset(
     else:
         y_train_norm, y_val_norm, y_test_norm = y_train, y_val, y_test  # Already one-hot for classification
 
-    return {
+    # Prepare preprocessed data dictionary
+    preprocessed_data = {
         "X_train": X_train,
         "X_val": X_val,
         "X_test": X_test,
@@ -285,3 +240,31 @@ def preprocess_aachen_dataset(
         "df_filtered": df_filtered,
         "max_sequence_length": X_train.shape[1] if not classification else seq_len
     }
+
+    # Store preprocessed data in data/processed/, overwriting if EOL and model type match
+    output_dir = "data/processed/"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Define base filename with EOL capacity and model type
+    eol_str = f"eol{int(eol_capacity*100)}"
+    model_type = "classification" if classification else "regression"
+
+    # Check for existing files with the same EOL and model type, remove if present
+    base_pattern = f"X_train_{model_type}_{eol_str}.npy"
+    existing_files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}_") and f.endswith(".npy")]
+    if existing_files:
+        for file in existing_files:
+            for key in ["X_train", "X_val", "X_test", "y_train", "y_val", "y_test"]:
+                old_file = os.path.join(output_dir, file.replace("X_train", key))
+                if os.path.exists(old_file):
+                    os.remove(old_file)
+
+    # Store data arrays, overwriting with the same parameters (no timestamp)
+    np.save(os.path.join(output_dir, f"X_train_{model_type}_{eol_str}.npy"), X_train)
+    np.save(os.path.join(output_dir, f"X_val_{model_type}_{eol_str}.npy"), X_val)
+    np.save(os.path.join(output_dir, f"X_test_{model_type}_{eol_str}.npy"), X_test)
+    np.save(os.path.join(output_dir, f"y_train_{model_type}_{eol_str}.npy"), y_train)
+    np.save(os.path.join(output_dir, f"y_val_{model_type}_{eol_str}.npy"), y_val)
+    np.save(os.path.join(output_dir, f"y_test_{model_type}_{eol_str}.npy"), y_test)
+
+    return preprocessed_data
