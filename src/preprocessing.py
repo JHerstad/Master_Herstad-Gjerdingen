@@ -10,10 +10,9 @@ from sklearn.preprocessing import MinMaxScaler
 import mat4py
 from typing import Dict, Optional, Tuple
 from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
 from config.defaults import Config  # Assuming Config is defined in config/defaults.py
 import os
-import json
-import datetime
 
 
 def compute_eol_and_rul(row: pd.Series, fraction: float) -> pd.Series:
@@ -126,7 +125,7 @@ def prepare_data_regression(df: pd.DataFrame, seq_len: int) -> Tuple[np.ndarray,
 
 def preprocess_aachen_dataset(
     data_path: str,
-    test_cell_count: int = 3,
+    test_cell_count: int = Config().test_cell_count,
     random_state: int = 42,
     log_transform: bool = False,
     classification: bool = False
@@ -178,22 +177,18 @@ def preprocess_aachen_dataset(
         df_filtered["RUL_binned_int"] = df_filtered["RUL_binned"].map(label_mapping)
 
     # Split data by cell into train/val/test
-    unique_cells = df_filtered["Cell"].unique()
-    np.random.shuffle(unique_cells)
+    # Hold back specific cells for testing
+    cells_to_hold_back = df_filtered["Cell"].unique()[:test_cell_count]
+    df_test = df_filtered[df_filtered["Cell"].isin(cells_to_hold_back)]
+    df_train_val = df_filtered[~df_filtered["Cell"].isin(cells_to_hold_back)]
 
-    split_index = int(len(unique_cells) * config.train_split_ratio)
-    train_cells = unique_cells[:split_index]
-    test_cells = unique_cells[split_index:]
-
-    df_train = df_filtered[df_filtered["Cell"].isin(train_cells)]
-    df_test = df_filtered[df_filtered["Cell"].isin(test_cells)]
-
-    # Further split train into train and validation
-    val_index = int(len(train_cells) * (1 - config.val_split_ratio))
-    val_cells = train_cells[val_index:]
-    train_cells = train_cells[:val_index]
-
-    df_val = df_filtered[df_filtered["Cell"].isin(val_cells)]
+    # Split the remaining data into training and validation sets
+    df_train, df_val = train_test_split(
+        df_train_val,
+        test_size=0.2,
+        random_state=random_state,
+        stratify=df_train_val["Cell"]
+    )
 
     # Prepare data based on model type
     if classification:

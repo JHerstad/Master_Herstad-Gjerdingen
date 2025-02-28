@@ -9,14 +9,10 @@ aligning with thesis standards for data management and experimentation.
 import os
 import sys
 import numpy as np
-import logging
 import json
 from src.preprocessing import preprocess_aachen_dataset
 from config.defaults import Config
 
-# Configure logging for professional tracking
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 def load_preprocessed_data(model_type: str, eol_capacity: float) -> tuple:
     """
@@ -33,7 +29,6 @@ def load_preprocessed_data(model_type: str, eol_capacity: float) -> tuple:
     eol_str = f"eol{int(eol_capacity*100)}"
 
     # Find the most recent files for the given model type and EOL capacity
-    pattern = f"X_train_{model_type}_{eol_str}_*.npy"
     files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}_") and f.endswith(".npy")]
     if not files:
         raise FileNotFoundError(f"No preprocessed data found for {model_type} with EOL {eol_capacity}")
@@ -146,7 +141,3 @@ def run_preprocessing_and_load():
 if __name__ == "__main__":
     # Add thesis_experiment/ to sys.path for imports
     sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
-    
-    # Run preprocessing and load data
-    loaded_data = run_preprocessing_and_load()
-    logger.info("Preprocessing and loading completed successfully")
