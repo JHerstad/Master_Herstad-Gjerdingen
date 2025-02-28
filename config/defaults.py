@@ -35,6 +35,14 @@ class Config:
     seq_len: int = 120          # Default sequence length for fixed-length classification or optional truncation in regression
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
+    lstm_units: int = 32
+    dropout_rate: float = 0.2
+    dense_units: int = 16
+    learning_rate: float = 0.001
+    clipnorm: float = 1.0
+    patience: int = 15
+    batch_size: int = 32
+    epochs: int = 50
 
 
 if __name__ == "__main__":
