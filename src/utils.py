@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from config.defaults import Config
 import os
 import datetime
-from typing import NoReturn
+from typing import NoReturn, Dict
 
 def plot_predictions_vs_actual(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoReturn:
     """
@@ -98,4 +98,23 @@ def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoRe
     os.makedirs(output_dir, exist_ok=True)
     filename = f"lstm_residuals_eol{int(Config().eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     plt.savefig(os.path.join(output_dir, filename))
+    plt.close()
+
+def plot_training_history(history: Dict) -> None:
+    """
+    Plots the training and validation loss over epochs.
+
+    Args:
+        history (Dict): Training history containing 'loss' and 'val_loss'.
+    """
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10, 6))
+    plt.plot(history['loss'], label='Training Loss', marker='o')
+    plt.plot(history['val_loss'], label='Validation Loss', marker='o')
+    plt.title("Training and Validation Loss for LSTM")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join("experiments", "results", f"lstm_training_loss_eol{int(Config().eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"))
     plt.close()

@@ -19,6 +19,8 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking, Input
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from config.defaults import Config
+import datetime
+
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,7 +46,7 @@ def load_preprocessed_data(model_type: str, eol_capacity: float) -> Tuple[np.nda
 
     # Find the most recent files for the given model type and EOL capacity
     pattern = f"X_train_{model_type}_{eol_str}.npy"
-    files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}_") and f.endswith(".npy")]
+    files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}") and f.endswith(".npy")]
     if not files:
         raise FileNotFoundError(f"No preprocessed data found for {model_type} with EOL {eol_capacity}")
 
@@ -138,26 +140,6 @@ def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.nda
     )
     logger.info("LSTM model trained successfully with config: %s", str(config))
     return history.history
-
-
-def plot_training_history(history: Dict) -> None:
-    """
-    Plots the training and validation loss over epochs.
-
-    Args:
-        history (Dict): Training history containing 'loss' and 'val_loss'.
-    """
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10, 6))
-    plt.plot(history['loss'], label='Training Loss', marker='o')
-    plt.plot(history['val_loss'], label='Validation Loss', marker='o')
-    plt.title("Training and Validation Loss for LSTM")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid()
-    plt.savefig(os.path.join("experiments", "results", f"lstm_training_loss_eol{int(Config().eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"))
-    plt.close()
 
 
 def main():
