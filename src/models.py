@@ -14,13 +14,14 @@ import numpy as np
 import logging
 from typing import Tuple, Dict, Optional
 import tensorflow as tf
-from tensorflow.keras.models import Sequential, model_from_json
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking, Input
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from config.defaults import Config
 import datetime
 import json
+import fnmatch
 
 
 
@@ -174,9 +175,12 @@ def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.nda
 
     return history.history
 
+import fnmatch  # Add this import at the top of src/models.py
+
 def load_saved_model(model_type: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
     """
-    Loads a previously saved LSTM model for RUL regression with matching eol_capacity and model type.
+    Loads a previously saved LSTM model for RUL regression with matching eol_capacity and model type,
+    focusing only on the best (lowest validation loss) models.
 
     Args:
         model_type (str): Either "classification" or "regression".
@@ -184,50 +188,66 @@ def load_saved_model(model_type: str, eol_capacity: float, config: Config) -> Op
         config (Config): Configuration object with model parameters (e.g., seq_len, lstm_units).
 
     Returns:
-        Optional[tf.keras.Model]: Loaded model if found, None if no matching model exists.
+        Optional[tf.keras.Model]: Loaded best model if found, None if no matching best model exists.
 
     Notes:
-        - Looks for the most recent saved model (best or final) in experiments/models/ with matching
+        - Looks for the most recent saved best model in experiments/models/ with matching
           eol_capacity and model_type, ensuring compatibility with current config.
         - Validates input shape and hyperparameters for reproducibility in thesis experiments.
+        - Uses fnmatch for precise filename pattern matching to handle files like
+          lstm_regression_eol65_YYYYMMDD_HHMMSS_best.keras.
+        - Ignores final models (ending with _final.keras) as per request.
     """
-    model_dir = "experiments/models/"
+    model_dir = os.path.join("experiments", "models")
     os.makedirs(model_dir, exist_ok=True)
     eol_str = f"eol{int(eol_capacity*100)}"
 
-    # Look for best and final models with matching parameters
+    # Define pattern for best models only
     pattern_best = f"lstm_{model_type}_{eol_str}_*_best.keras"
-    pattern_final = f"lstm_{model_type}_{eol_str}_*_final.keras"
-    all_files = os.listdir(model_dir)
-    best_files = [f for f in all_files if pattern_best in f]
-    final_files = [f for f in all_files if pattern_final in f]
-    model_files = best_files + final_files
 
-    if not model_files:
-        logger.info(f"No saved model found for {model_type} with EOL {eol_capacity}")
+    # List all files in the model directory for debugging
+    all_files = os.listdir(model_dir)
+    logger.debug(f"Files in {model_dir}: {all_files}")
+
+    # Use fnmatch to filter only best model files
+    best_files = [f for f in all_files if fnmatch.fnmatch(f, pattern_best)]
+
+    if not best_files:
+        logger.info(f"No saved best model found for {model_type} with EOL {eol_capacity}")
         return None
 
-    # Sort by timestamp (assuming filename includes YYYYMMDD_HHMMSS) to get most recent
-    model_files.sort(reverse=True)
-    latest_model = model_files[0]
+    # Sort by timestamp (extract from filename: YYYYMMDD_HHMMSS) to get most recent
+    def extract_timestamp(filename: str) -> tuple:
+        """Extract timestamp (YYYYMMDD_HHMMSS) from filename for sorting."""
+        import re
+        match = re.search(r'\d{8}_\d{6}', filename)
+        if match:
+            return match.group(0)
+        return "00000000_000000"  # Default for sorting if no timestamp found
+
+    best_files.sort(key=extract_timestamp, reverse=True)
+    latest_model = best_files[0]
     model_path = os.path.join(model_dir, latest_model)
 
+    # Debug the selected model path
+    logger.debug(f"Attempting to load best model from {model_path}")
+
     try:
-        # Load the model
+        # Load the best model in native Keras format
         model = load_model(model_path)
-        logger.info(f"Loaded saved model from {model_path}")
+        logger.info(f"Loaded saved best model from {model_path}")
 
         # Validate model compatibility with current config
         input_shape = (config.seq_len, 1)  # Assumes seq_len is in Config
         if model.input_shape[1:] != input_shape:
-            logger.warning(f"Input shape mismatch: saved model has {model.input_shape[1:]}, config expects {input_shape}")
+            logger.warning(f"Input shape mismatch: saved best model has {model.input_shape[1:]}, config expects {input_shape}")
             return None
         # Optionally validate other hyperparameters (e.g., lstm_units, dense_units) by inspecting model layers
         # For simplicity, assume basic compatibility; extend for full validation if needed
 
         return model
     except Exception as e:
-        logger.error(f"Failed to load saved model from {model_path}: {str(e)}")
+        logger.error(f"Failed to load saved best model from {model_path}: {str(e)}")
         return None
     
 

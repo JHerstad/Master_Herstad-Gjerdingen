@@ -54,5 +54,3 @@ def evaluate_lstm_model(model: tf.keras.Model, X_test: np.ndarray, y_test: np.nd
     
     # Log the evaluation results for reproducibility and thesis documentation
     logger.info("LSTM model evaluated - Test Loss: %.4f, Test MAE (rescaled): %.4f", test_loss, mae_rescaled)
-    
-    return test_loss, mae_rescaled
