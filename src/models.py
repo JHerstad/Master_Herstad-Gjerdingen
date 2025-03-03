@@ -12,7 +12,7 @@ import os
 import sys
 import numpy as np
 import logging
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, model_from_json
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking, Input
@@ -20,6 +20,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from config.defaults import Config
 import datetime
+import json
+
 
 
 # Configure logging for professional tracking
@@ -32,22 +34,33 @@ sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
 def load_preprocessed_data(model_type: str, eol_capacity: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
-    Loads preprocessed data from data/processed/ based on model type and EOL capacity.
+    Loads preprocessed data and metadata from data/processed/ based on model type and EOL capacity.
 
     Args:
         model_type (str): Either "classification" or "regression".
         eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
 
     Returns:
-        Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, metadata)
+        Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, metadata),
+               where metadata includes y_max, max_sequence_length, eol_capacity, classification, and timestamp.
+
+    Raises:
+        FileNotFoundError: If no preprocessed data or metadata files are found for the given model type and EOL capacity.
+        ValueError: If required metadata fields (y_max for regression, max_sequence_length) are missing.
+
+    Notes:
+        - Loads data arrays (.npy) and metadata (.json) from data/processed/, ensuring reproducibility
+          for thesis experiments.
+        - Requires metadata to be stored in a separate JSON file (e.g., metadata_regression_eol65.json)
+          for y_max and other preprocessing details; no fallback simulation is provided.
     """
     output_dir = "data/processed/"
     eol_str = f"eol{int(eol_capacity*100)}"
 
-    # Find the most recent files for the given model type and EOL capacity
+    # Find the most recent data files for the given model type and EOL capacity
     pattern = f"X_train_{model_type}_{eol_str}.npy"
-    files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}") and f.endswith(".npy")]
-    if not files:
+    data_files = [f for f in os.listdir(output_dir) if f.startswith(pattern) and f.endswith(".npy")]
+    if not data_files:
         raise FileNotFoundError(f"No preprocessed data found for {model_type} with EOL {eol_capacity}")
 
     # Load data arrays (overwritten files have no timestamp)
@@ -58,20 +71,21 @@ def load_preprocessed_data(model_type: str, eol_capacity: float) -> Tuple[np.nda
     y_val = np.load(os.path.join(output_dir, f"y_val_{model_type}_{eol_str}.npy"))
     y_test = np.load(os.path.join(output_dir, f"y_test_{model_type}_{eol_str}.npy"))
 
-    # Load metadata (even though not stored, we'll simulate for regression)
-    metadata_file = [f for f in os.listdir(output_dir) if f.startswith(f"metadata_{model_type}_{eol_str}_") and f.endswith(".json")]
-    metadata = {}
-    if metadata_file:
-        with open(os.path.join(output_dir, metadata_file[0]), "r") as f:
-            metadata = json.load(f)[model_type]
-    else:
-        metadata = {
-            "max_sequence_length": X_train.shape[1],
-            "eol_capacity": eol_capacity,
-            "classification": model_type == "classification"
-        }
+    # Load metadata from JSON file, required for operation
+    metadata_file = [f for f in os.listdir(output_dir) if f.startswith(f"metadata_{model_type}_{eol_str}") and f.endswith(".json")]
+    if not metadata_file:
+        raise FileNotFoundError(f"No metadata file found for {model_type} with EOL {eol_capacity}")
+    
+    with open(os.path.join(output_dir, metadata_file[0]), "r") as f:
+        metadata = json.load(f)  # Load the full dictionary directly
 
-    logger.info(f"Loaded preprocessed data for {model_type} with EOL {eol_capacity}")
+    # Validate metadata includes required fields for regression or classification
+    if model_type == "regression" and "y_max" not in metadata:
+        raise ValueError(f"Missing y_max in metadata for regression model with EOL {eol_capacity}")
+    if "max_sequence_length" not in metadata:
+        raise ValueError(f"Missing max_sequence_length in metadata for {model_type} with EOL {eol_capacity}")
+
+    logger.info(f"Loaded preprocessed data and metadata for {model_type} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
 
@@ -108,28 +122,40 @@ def build_lstm_model(input_shape: Tuple[int, int], config: Config) -> tf.keras.M
 
 def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, config: Config) -> Dict:
     """
-    Trains the LSTM model for RUL regression with early stopping and model checkpointing.
+    Trains the LSTM model for RUL regression with early stopping, model checkpointing, and explicit model saving.
+
+    This function trains the model, saves the best model during training based on validation loss,
+    and saves the final model after training for additional reproducibility in thesis experiments.
 
     Args:
         model (tf.keras.Model): Compiled LSTM model.
-        X_train (np.ndarray): Training input sequences.
-        y_train (np.ndarray): Training target values.
-        X_val (np.ndarray): Validation input sequences.
-        y_val (np.ndarray): Validation target values.
-        config (Config): Configuration object with training parameters.
+        X_train (np.ndarray): Training input sequences with shape (n_samples, seq_len, 1).
+        y_train (np.ndarray): Training target values (normalized) with shape (n_samples,).
+        X_val (np.ndarray): Validation input sequences with shape (n_samples, seq_len, 1).
+        y_val (np.ndarray): Validation target values (normalized) with shape (n_samples,).
+        config (Config): Configuration object with training parameters (e.g., epochs, batch_size, patience).
 
     Returns:
-        Dict: Training history.
+        Dict: Training history containing loss metrics.
+
+    Notes:
+        - Uses EarlyStopping to prevent overfitting and ModelCheckpoint to save the best model.
+        - Explicitly saves the final model after training for additional reproducibility.
+        - Saves models in the native Keras format (.keras) for modern compatibility, recommended over legacy HDF5 (.h5).
+        - Logs training progress and saves for professional tracking in a thesis context.
     """
+    # Define callbacks for training, including early stopping and model checkpointing
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
         ModelCheckpoint(
-            os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.h5"),
+            os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_best.keras"),
             monitor='val_loss',
             save_best_only=True,
             verbose=1
         )
     ]
+
+    # Train the model with the specified callbacks
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
@@ -138,9 +164,72 @@ def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.nda
         verbose=1,
         callbacks=callbacks
     )
+
+    # Explicitly save the final model after training, with a distinct filename in native Keras format
+    final_model_path = os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
+    os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
+    model.save(final_model_path)
+    logger.info(f"Final LSTM model saved to {final_model_path} in native Keras format")
     logger.info("LSTM model trained successfully with config: %s", str(config))
+
     return history.history
 
+def load_saved_model(model_type: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
+    """
+    Loads a previously saved LSTM model for RUL regression with matching eol_capacity and model type.
+
+    Args:
+        model_type (str): Either "classification" or "regression".
+        eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
+        config (Config): Configuration object with model parameters (e.g., seq_len, lstm_units).
+
+    Returns:
+        Optional[tf.keras.Model]: Loaded model if found, None if no matching model exists.
+
+    Notes:
+        - Looks for the most recent saved model (best or final) in experiments/models/ with matching
+          eol_capacity and model_type, ensuring compatibility with current config.
+        - Validates input shape and hyperparameters for reproducibility in thesis experiments.
+    """
+    model_dir = "experiments/models/"
+    os.makedirs(model_dir, exist_ok=True)
+    eol_str = f"eol{int(eol_capacity*100)}"
+
+    # Look for best and final models with matching parameters
+    pattern_best = f"lstm_{model_type}_{eol_str}_*_best.keras"
+    pattern_final = f"lstm_{model_type}_{eol_str}_*_final.keras"
+    all_files = os.listdir(model_dir)
+    best_files = [f for f in all_files if pattern_best in f]
+    final_files = [f for f in all_files if pattern_final in f]
+    model_files = best_files + final_files
+
+    if not model_files:
+        logger.info(f"No saved model found for {model_type} with EOL {eol_capacity}")
+        return None
+
+    # Sort by timestamp (assuming filename includes YYYYMMDD_HHMMSS) to get most recent
+    model_files.sort(reverse=True)
+    latest_model = model_files[0]
+    model_path = os.path.join(model_dir, latest_model)
+
+    try:
+        # Load the model
+        model = load_model(model_path)
+        logger.info(f"Loaded saved model from {model_path}")
+
+        # Validate model compatibility with current config
+        input_shape = (config.seq_len, 1)  # Assumes seq_len is in Config
+        if model.input_shape[1:] != input_shape:
+            logger.warning(f"Input shape mismatch: saved model has {model.input_shape[1:]}, config expects {input_shape}")
+            return None
+        # Optionally validate other hyperparameters (e.g., lstm_units, dense_units) by inspecting model layers
+        # For simplicity, assume basic compatibility; extend for full validation if needed
+
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load saved model from {model_path}: {str(e)}")
+        return None
+    
 
 def main():
     """

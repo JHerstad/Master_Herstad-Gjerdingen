@@ -10,8 +10,11 @@ ensuring reproducibility and professionalism for thesis experiments.
 import numpy as np
 import tensorflow as tf
 from typing import Tuple
+import logging
 
-
+# Configure logging for professional tracking
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def evaluate_lstm_model(model: tf.keras.Model, X_test: np.ndarray, y_test: np.ndarray, y_max: float) -> Tuple[float, float]:
     """

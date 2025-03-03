@@ -4,6 +4,7 @@ Handles data loading, EOL/RUL computation, binning, splitting, normalization, an
 for both classification (CNN) and regression (LSTM) models with a configurable sequence length.
 """
 
+import datetime
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -13,6 +14,7 @@ from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from config.defaults import Config  # Assuming Config is defined in config/defaults.py
 import os
+import json
 
 
 def compute_eol_and_rul(row: pd.Series, fraction: float) -> pd.Series:
@@ -245,21 +247,42 @@ def preprocess_aachen_dataset(
     model_type = "classification" if classification else "regression"
 
     # Check for existing files with the same EOL and model type, remove if present
-    base_pattern = f"X_train_{model_type}_{eol_str}.npy"
-    existing_files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}_") and f.endswith(".npy")]
-    if existing_files:
-        for file in existing_files:
+    existing_data_files = [f for f in os.listdir(output_dir) if f.startswith(f"X_train_{model_type}_{eol_str}_") and f.endswith(".npy")]
+    existing_metadata_files = [f for f in os.listdir(output_dir) if f.startswith(f"metadata_{model_type}_{eol_str}_") and f.endswith(".json")]
+
+    # Remove existing data files if present
+    if existing_data_files:
+        for file in existing_data_files:
             for key in ["X_train", "X_val", "X_test", "y_train", "y_val", "y_test"]:
                 old_file = os.path.join(output_dir, file.replace("X_train", key))
                 if os.path.exists(old_file):
                     os.remove(old_file)
 
-    # Store data arrays, overwriting with the same parameters (no timestamp)
+    # Remove existing metadata file if present
+    if existing_metadata_files:
+        for file in existing_metadata_files:
+            metadata_file = os.path.join(output_dir, file)
+            if os.path.exists(metadata_file):
+                os.remove(metadata_file)
+
+    # Store preprocessed data arrays, overwriting with the same parameters (no timestamp)
+    # X_train, X_val, X_test: Normalized input sequences for model training
     np.save(os.path.join(output_dir, f"X_train_{model_type}_{eol_str}.npy"), X_train)
     np.save(os.path.join(output_dir, f"X_val_{model_type}_{eol_str}.npy"), X_val)
     np.save(os.path.join(output_dir, f"X_test_{model_type}_{eol_str}.npy"), X_test)
-    np.save(os.path.join(output_dir, f"y_train_{model_type}_{eol_str}.npy"), y_train)
-    np.save(os.path.join(output_dir, f"y_val_{model_type}_{eol_str}.npy"), y_val)
-    np.save(os.path.join(output_dir, f"y_test_{model_type}_{eol_str}.npy"), y_test)
 
-    return preprocessed_data
+    # y_train, y_val, y_test: Normalized target RUL values for regression, or one-hot encoded for classification
+    np.save(os.path.join(output_dir, f"y_train_{model_type}_{eol_str}.npy"), y_train_norm)
+    np.save(os.path.join(output_dir, f"y_val_{model_type}_{eol_str}.npy"), y_val_norm)
+    np.save(os.path.join(output_dir, f"y_test_{model_type}_{eol_str}.npy"), y_test_norm)
+
+    # Store metadata in a separate JSON file for reproducibility, focusing on y_max as most relevant
+    metadata = {
+        "y_max": float(y_max),  # Convert to Python float for JSON serialization
+        "max_sequence_length": int(X_train.shape[1]),
+        "eol_capacity": float(eol_capacity),
+        "classification": classification,
+        "timestamp": datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    }
+    with open(os.path.join(output_dir, f"metadata_{model_type}_{eol_str}.json"), "w") as f:
+        json.dump(metadata, f, indent=4)
