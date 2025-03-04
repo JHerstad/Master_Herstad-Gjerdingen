@@ -76,37 +76,37 @@ def load_preprocessed_data(task_type: str, eol_capacity: float) -> Tuple[np.ndar
     logger.info(f"Loaded preprocessed data and metadata for {task_type} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
-def build_lstm_model(input_shape: Tuple[int, int], config: Config) -> tf.keras.Model:
+def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, input_shape: Tuple[int, int]) -> Tuple[tf.keras.Model, Dict]:
     """
-    Builds an LSTM model for RUL regression on the Aachen dataset.
+    Trains an LSTM model for RUL regression using tuned hyperparameters from config.
 
     Args:
+        config (Config): Configuration object with tuned hyperparameters.
+        X_train, y_train, X_val, y_val (np.ndarray): Training and validation data.
         input_shape (Tuple[int, int]): Shape of input sequences (seq_len, 1).
-        config (Config): Configuration object with hyperparameters.
+
+    Returns:
+        Tuple: (trained model, training history).
     """
+    # Build model using tuned parameters from config
     model = Sequential([
-        Input(shape=input_shape),
-        Masking(mask_value=0.0),
+        Masking(mask_value=0.0, input_shape=input_shape),
         LSTM(
-            config.lstm_units,
+            units=config.lstm_units,
             activation='tanh',
             recurrent_activation='sigmoid',
             return_sequences=False,
             unroll=False
         ),
-        Dropout(config.dropout_rate),
-        Dense(config.dense_units, activation='tanh'),
-        Dense(1)  # Output layer for regression
+        Dropout(config.lstm_dropout_rate),
+        Dense(config.lstm_dense_units, activation='tanh'),
+        Dense(1)
     ])
     optimizer = Adam(learning_rate=config.learning_rate, clipnorm=config.clipnorm)
     model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
-    logger.info("LSTM model built for regression with config: %s", str(config))
-    return model
+    logger.info("LSTM model built with tuned config: %s", str(config))
 
-def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, config: Config) -> Dict:
-    """
-    Trains the LSTM model for RUL regression with early stopping and model checkpointing.
-    """
+    # Define callbacks
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
         ModelCheckpoint(
@@ -117,6 +117,7 @@ def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.nda
         )
     ]
 
+    # Train the model
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
@@ -129,10 +130,9 @@ def train_lstm_model(model: tf.keras.Model, X_train: np.ndarray, y_train: np.nda
     final_model_path = os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
     os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
     model.save(final_model_path)
-    logger.info(f"Final LSTM model saved to {final_model_path} in native Keras format")
-    logger.info("LSTM model trained successfully with config: %s", str(config))
+    logger.info(f"Final LSTM model saved to {final_model_path}")
 
-    return history.history
+    return model, history.history
 
 def load_saved_model(task_type: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
     """

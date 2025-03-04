@@ -44,22 +44,67 @@ class Config:
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
     
+    # Grid Search
+    batch_size: int = 32        # Default batch size for training/tuning
+    max_trials: int = 5        # Default number of trials for hyperparameter tuning
+    tuning_epochs: int = 10      # Default epochs for tuning (kept low for speed)
+    tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")  # Default directory for tuning results
+
     # LSTM model
+    # Architecture
     lstm_units = 32  # Number of LSTM units (default, can be overridden by hyperparameter tuning)
-    dropout_rate = 0.2  # Dropout rate for regularization
-    dense_units = 16  # Number of units in the fully connected layer
+    lstm_dropout_rate = 0.2  # Dropout rate for regularization
+    lstm_dense_units = 16  # Number of units in the fully connected layer
+    
+   
+    # Training
     learning_rate = 0.001  # Learning rate for Adam optimizer
     clipnorm = 1.0  # Gradient clipping norm for stable training
-    batch_size = 32  # Mini-batch size
     epochs = 50  # Maximum number of training epochs
-    patience = 5  # Early stopping patience
+    patience = 15  # Early stopping patience
 
+    # CNN model
+    # Architecture
+    conv1_filters: int = 32
+    conv1_kernel_size: int = 11
+    conv2_filters: int = 64
+    conv2_kernel_size: int = 7
+    conv3_filters: int = 64
+    conv3_kernel_size: int = 5
+    l2_reg: float = 0.001
+    
 
-    # LSTM Grid Search
-    batch_size: int = 32        # Default batch size for training/tuning
-    max_trials: int = 3        # Default number of trials for hyperparameter tuning
-    tuning_epochs: int = 3      # Default epochs for tuning (kept low for speed)
-    tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")  # Default directory for tuning results
+    def load_best_params(self, model_type: str = "lstm", eol_capacity: float = None) -> None:
+        """
+        Load best hyperparameters from a tuning file and override defaults if available.
+
+        Args:
+            model_type (str): Type of model (e.g., "lstm", "cnn").
+            eol_capacity (float, optional): EOL capacity to match the tuning file; defaults to self.eol_capacity.
+        """
+        if eol_capacity is None:
+            eol_capacity = self.eol_capacity
+
+        tuning_file = os.path.join(
+            self.tuner_directory,
+            f"{self.project_name}_{model_type}_tuning_eol{int(eol_capacity*100)}_best_params.json"
+        )
+        
+        if os.path.exists(tuning_file):
+            try:
+                with open(tuning_file, 'r') as f:
+                    best_params = json.load(f)
+                # Update attributes with tuned values if they exist in Config
+                for key, value in best_params.items():
+                    if hasattr(self, key):
+                        setattr(self, key, value)
+                    else:
+                        print(f"Warning: Parameter '{key}' from {tuning_file} not found in Config; ignoring.")
+                print(f"Loaded best hyperparameters from {tuning_file}: {best_params}")
+            except Exception as e:
+                print(f"Error loading best params from {tuning_file}: {str(e)}")
+        else:
+            print(f"No tuning file found at {tuning_file}; using defaults.")
 
 
 if __name__ == "__main__":

@@ -224,20 +224,7 @@ def preprocess_aachen_dataset(
     else:
         y_train_norm, y_val_norm, y_test_norm = y_train, y_val, y_test  # Already one-hot for classification
 
-    # Prepare preprocessed data dictionary
-    preprocessed_data = {
-        "X_train": X_train,
-        "X_val": X_val,
-        "X_test": X_test,
-        "y_train": y_train_norm,
-        "y_val": y_val_norm,
-        "y_test": y_test_norm,
-        "y_max": y_max,
-        "label_mapping": label_mapping if classification else None,
-        "df_filtered": df_filtered,
-        "max_sequence_length": X_train.shape[1] if not classification else seq_len
-    }
-
+    
     # Store preprocessed data in data/processed/, overwriting if EOL and model type match
     output_dir = "data/processed/"
     os.makedirs(output_dir, exist_ok=True)
