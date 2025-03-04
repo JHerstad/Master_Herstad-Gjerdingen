@@ -1,56 +1,110 @@
 #!/usr/bin/env python3
 """
-Module for evaluating machine learning models, specifically LSTM models for RUL regression on the Aachen dataset.
-
-This module provides functions to evaluate model performance, including loss and metrics like MAE,
-with rescaling for RUL regression. It integrates with src/models.py and src/preprocessing.py,
-ensuring reproducibility and professionalism for thesis experiments.
+General module for evaluating regression models on a test set.
+Supports both Keras-based models and generic scikit-learn-like models.
 """
 
 import numpy as np
-import tensorflow as tf
-from typing import Tuple
 import logging
+
+# Optional, if you want to compute metrics for non-Keras models:
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def evaluate_lstm_model(model: tf.keras.Model, X_test: np.ndarray, y_test: np.ndarray, y_max: float) -> Tuple[float, float]:
+def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_max: float = None):
     """
-    Evaluates an LSTM model on the test set for RUL regression, rescaling predictions to the original range.
-
-    This function computes the test loss and mean absolute error (MAE) for the LSTM model,
-    rescales the predictions and actual values using y_max, and logs the results for reproducibility.
+    Evaluates a regression model on the test set. Works for:
+      - Keras models (i.e., tf.keras.Model) by calling model.evaluate().
+      - Non-Keras models (e.g., scikit-learn) by manually computing MSE and MAE.
 
     Args:
-        model (tf.keras.Model): The trained LSTM model to evaluate.
-        X_test (np.ndarray): Test input sequences with shape (n_samples, seq_len, 1).
-        y_test (np.ndarray): Test target values (normalized) with shape (n_samples,).
-        y_max (float): The maximum RUL value used for normalizing the targets, for rescaling predictions.
+        model: The regression model to evaluate.
+               If it's a Keras model, must have `evaluate()` and `predict()` methods.
+               Otherwise, must have a `predict()` method (scikit-learn style).
+        X_test (np.ndarray): Test features, shape depends on the model.
+        y_test (np.ndarray): Test targets (normalized or unnormalized).
+        y_max (float, optional): Max RUL (or similar scaling factor) used for normalization.                 
+                If provided, predictions and targets are rescaled by multiplying with y_max.
 
     Returns:
-        Tuple[float, float]: A pair containing (test_loss, test_mae_rescaled), where:
-            - test_loss is the model's loss (e.g., MSE) on the test set.
-            - test_mae_rescaled is the mean absolute error after rescaling to the original RUL range.
+        (float, float): (test_loss, test_mae_rescaled) to mirror your LSTM approach,
+                        where test_loss is MSE (or the Keras loss) and test_mae_rescaled
+                        is MAE after optional rescaling.
 
     Notes:
-        - Assumes the model was compiled with 'mse' loss and 'mae' metric.
-        - Uses verbose=1 in model.evaluate() for progress reporting during evaluation.
-        - Logs results using the logging module for professional tracking in a thesis context.
+        - For Keras models, we assume the loss is MSE and one metric is MAE.
+        - For other models, we compute MSE and MAE manually via scikit-learn.
+        - If y_max is provided, we rescale y_pred and y_test by y_max before computing final MAE.
+        - If y_max is None, no rescaling is done.
     """
-    # Evaluate the model on the test set, reporting progress
-    test_loss, test_mae = model.evaluate(X_test, y_test, verbose=1)
-    
-    # Generate predictions for the test set silently
-    y_pred = model.predict(X_test, verbose=0).flatten()
-    
-    # Rescale predictions and actual values to the original RUL range using y_max
-    y_pred_rescaled = y_pred * y_max
-    y_test_rescaled = y_test * y_max
-    
-    # Calculate the rescaled MAE for better interpretability
-    mae_rescaled = np.mean(np.abs(y_test_rescaled - y_pred_rescaled))
-    
-    # Log the evaluation results for reproducibility and thesis documentation
-    logger.info("LSTM model evaluated - Test Loss: %.4f, Test MAE (rescaled): %.4f", test_loss, mae_rescaled)
+
+    # Detect if it's a Keras model by checking for an 'evaluate' method
+    is_keras_model = hasattr(model, "evaluate") and callable(model.evaluate)
+
+    if is_keras_model:
+        # 1. Evaluate with Keras's built-in method
+        test_loss, test_mae = model.evaluate(X_test, y_test, verbose=1)
+        # 2. Predict
+        y_pred = model.predict(X_test, verbose=0).flatten()  # flatten in case it returns shape (n,1)
+
+        # In your LSTM code, 'test_loss' should be MSE if compiled with `loss='mse'`
+        # and 'test_mae' is the MAE metric. We'll keep those to stay consistent.
+
+    else:
+        # Assume a scikit-learn-like model with only `.predict()`
+        y_pred = model.predict(X_test)
+
+        # Compute test_loss as MSE
+        test_loss = mean_squared_error(y_test, y_pred)
+        # Compute test_mae as raw MAE
+        test_mae = mean_absolute_error(y_test, y_pred)
+
+    # Optionally rescale predictions and targets if y_max is given
+    if y_max is not None:
+        y_test_rescaled = y_test * y_max
+        y_pred_rescaled = y_pred * y_max
+        mae_rescaled = np.mean(np.abs(y_test_rescaled - y_pred_rescaled))
+    else:
+        # If no rescaling, the "rescaled" MAE is just the raw MAE
+        mae_rescaled = test_mae
+
+    # Log the results
+    logger.info("Test Loss (MSE): %.4f", test_loss)
+    logger.info("Test MAE (rescaled): %.4f", mae_rescaled)
+
+    return test_loss, mae_rescaled
+
+
+
+
+
+# src/evaluate_model.py
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_true_vs_pred(y_true, y_pred, y_max=None):
+    """
+    Plots a simple 'True vs. Predicted' scatter plot for regression outputs.
+
+    Args:
+        y_true (np.ndarray): Ground-truth target values.
+        y_pred (np.ndarray): Model-predicted target values.
+        y_max (float, optional): If the data was normalized by dividing by y_max,
+                                 multiply values by y_max to rescale before plotting.
+    """
+    if y_max is not None:
+        y_true = y_true * y_max
+        y_pred = y_pred * y_max
+
+    plt.figure()
+    plt.scatter(y_true, y_pred)
+    min_val = min(min(y_true), min(y_pred))
+    max_val = max(max(y_true), max(y_pred))
+    plt.plot([min_val, max_val], [min_val, max_val])
+    plt.xlabel("True Value")
+    plt.ylabel("Predicted Value")
+    plt.title("True vs. Predicted Values")
+    plt.show()
