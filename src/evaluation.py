@@ -6,9 +6,9 @@ Supports both Keras-based models and generic scikit-learn-like models.
 
 import numpy as np
 import logging
-
-# Optional, if you want to compute metrics for non-Keras models:
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -78,22 +78,54 @@ def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_m
     return test_loss, mae_rescaled
 
 
-
-
-
-# src/evaluate_model.py
-import matplotlib.pyplot as plt
-import numpy as np
-
-def plot_true_vs_pred(y_true, y_pred, y_max=None):
+def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None) -> tuple:
     """
-    Plots a simple 'True vs. Predicted' scatter plot for regression outputs.
+    Evaluates a classification model on the test set.
+
+    Args:
+        model: The classification model (Keras or scikit-learn-like).
+               Must have `evaluate()` and `predict()` (Keras) or just `predict()` (scikit-learn).
+        X_test (np.ndarray): Test features.
+        y_test (np.ndarray): Test targets (one-hot for Keras, integers for scikit-learn).
+        labels (list, optional): List of class names for confusion matrix and report.
+
+    Returns:
+        tuple: (test_loss, test_accuracy, y_pred) where test_loss is cross-entropy (Keras only),
+               test_accuracy is the accuracy score, and y_pred are predicted class indices.
+    """
+    is_keras_model = hasattr(model, "evaluate") and callable(model.evaluate)
+
+    if is_keras_model:
+        test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=1)
+        y_pred_proba = model.predict(X_test, verbose=0)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+        y_test_int = np.argmax(y_test, axis=1)
+    else:
+        y_pred = model.predict(X_test)
+        test_loss = None  # No loss for non-Keras models unless computed separately
+        test_accuracy = accuracy_score(y_test, y_pred)
+        y_test_int = y_test  # Assume integer labels for non-Keras
+
+    if test_loss is not None:
+        logger.info("Test Loss (Crossentropy): %.4f", test_loss)
+    logger.info("Test Accuracy: %.4f", test_accuracy)
+
+    if labels is not None:
+        plot_confusion_matrix(y_test_int, y_pred, labels)
+        logger.info("Classification Report:\n%s", classification_report(y_test_int, y_pred, target_names=labels))
+    else:
+        logger.warning("No labels provided; skipping confusion matrix and classification report.")
+
+    return test_loss, test_accuracy, y_pred
+
+def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None) -> None:
+    """
+    Plots a 'True vs. Predicted' scatter plot for regression outputs.
 
     Args:
         y_true (np.ndarray): Ground-truth target values.
         y_pred (np.ndarray): Model-predicted target values.
-        y_max (float, optional): If the data was normalized by dividing by y_max,
-                                 multiply values by y_max to rescale before plotting.
+        y_max (float, optional): If normalized, rescale by multiplying with y_max.
     """
     if y_max is not None:
         y_true = y_true * y_max
@@ -103,8 +135,25 @@ def plot_true_vs_pred(y_true, y_pred, y_max=None):
     plt.scatter(y_true, y_pred)
     min_val = min(min(y_true), min(y_pred))
     max_val = max(max(y_true), max(y_pred))
-    plt.plot([min_val, max_val], [min_val, max_val])
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--')
     plt.xlabel("True Value")
     plt.ylabel("Predicted Value")
-    plt.title("True vs. Predicted Values")
+    plt.title("True vs. Predicted Values (Regression)")
+    plt.show()
+
+def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list) -> None:
+    """
+    Plots a confusion matrix for classification outputs.
+
+    Args:
+        y_true (np.ndarray): Ground-truth integer labels.
+        y_pred (np.ndarray): Predicted integer labels.
+        labels (list): List of class names.
+    """
+    conf_matrix = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(6, 6))
+    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix (Classification)")
     plt.show()
