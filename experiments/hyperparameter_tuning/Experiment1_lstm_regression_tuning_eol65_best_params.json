@@ -1,0 +1,7 @@
+{
+    "lstm_units": 32,
+    "lstm_dropout_rate": 0.30000000000000004,
+    "lstm_dense_units": 56,
+    "learning_rate": 0.01,
+    "clipnorm": 1.0
+}

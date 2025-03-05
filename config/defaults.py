@@ -62,7 +62,7 @@ class Config:
     learning_rate = 0.001  # Learning rate for Adam optimizer
     clipnorm = 1.0  # Gradient clipping norm for stable training
     epochs = 50  # Maximum number of training epochs
-    patience = 15  # Early stopping patience
+    patience = 20  # Early stopping patience
 
     # CNN model
     # Architecture
@@ -77,12 +77,12 @@ class Config:
     cnn_dropout_rate: float = 0.2  # Dropout rate for regularization
     
 
-    def load_best_params(self, model_type: str = "lstm", eol_capacity: float = None) -> None:
+    def load_best_params(self, model_task: str = "lstm_regression", eol_capacity: float = None) -> None:
         """
         Load best hyperparameters from a tuning file and override defaults if available.
 
         Args:
-            model_type (str): Type of model (e.g., "lstm", "cnn").
+            model_task (str): Type of model (e.g., "lstm_regression", "cnn_classification").
             eol_capacity (float, optional): EOL capacity to match the tuning file; defaults to self.eol_capacity.
         """
         if eol_capacity is None:
@@ -90,7 +90,7 @@ class Config:
 
         tuning_file = os.path.join(
             self.tuner_directory,
-            f"{self.project_name}_{model_type}_tuning_eol{int(eol_capacity*100)}_best_params.json"
+            f"{self.project_name}_{model_task}_tuning_eol{int(eol_capacity*100)}_best_params.json"
         )
         
         if os.path.exists(tuning_file):

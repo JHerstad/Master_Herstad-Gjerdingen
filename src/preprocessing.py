@@ -266,7 +266,7 @@ def preprocess_aachen_dataset(
     # Store metadata in a separate JSON file for reproducibility, focusing on y_max as most relevant
     metadata = {
         "y_max": float(y_max),  # Convert to Python float for JSON serialization
-        "max_sequence_length": int(X_train.shape[1]),
+        "seq_len": int(X_train.shape[1]),
         "eol_capacity": float(eol_capacity),
         "classification": classification,
         "timestamp": datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

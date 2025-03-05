@@ -114,43 +114,49 @@ def build_cnn_model(hp, input_shape):
     model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
-def run_hyperparameter_search(config: Config, model_type="lstm"):
+def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression"):
     """
     Runs hyperparameter tuning using Keras Tuner with Bayesian Optimization.
 
     Args:
         config (Config): Configuration object with model and tuning parameters.
-        model_type (str): "lstm" for regression or "cnn" for classification.
+        model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
+                         Default is "lstm_regression".
 
     Returns:
         dict: Best hyperparameters found during the search.
     """
-    task_type = "classification" if model_type == "cnn" or config.classification else "regression"
-    logger.info(f"Task type set to: {task_type}, Model type: {model_type}")
+    logger.info(f"Running hyperparameter search for: {model_task}")
 
-    # Load preprocessed data
-    logger.info("Loading preprocessed data for hyperparameter tuning...")
+    # Load preprocessed data using model_task
+    logger.info(f"Loading preprocessed data for hyperparameter tuning with {model_task}...")
     X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
-        task_type, config.eol_capacity
+        model_task, config.eol_capacity
     )
-    input_shape = (metadata["max_sequence_length"], 1)
+    input_shape = (metadata["seq_len"], 1)
 
-    # Select model-building function
-    if model_type == "lstm":
+    # Select model-building function and objective based on model_task
+    if "lstm" in model_task:
+        if "regression" not in model_task:
+            logger.warning(f"{model_task} specified, but LSTM typically used for regression.")
         build_fn = lambda hp: build_lstm_model(hp, input_shape)
-    elif model_type == "cnn":
+        objective = "val_loss"  # Regression uses loss (MSE)
+    elif "cnn" in model_task:
+        if "classification" not in model_task:
+            logger.warning(f"{model_task} specified, but CNN typically used for classification.")
         build_fn = lambda hp: build_cnn_model(hp, input_shape)
+        objective = "val_accuracy"  # Classification uses accuracy
     else:
-        raise ValueError(f"Unsupported model_type: {model_type}")
+        raise ValueError(f"Unsupported model_task: {model_task}. Must be 'lstm_regression' or 'cnn_classification'.")
 
     # Set up the Keras Tuner
     tuner = kt.BayesianOptimization(
         build_fn,
-        objective="val_accuracy" if model_type == "cnn" else "val_loss",
+        objective=objective,
         max_trials=config.max_trials,
         executions_per_trial=1,
         directory=config.tuner_directory,
-        project_name=f"{config.project_name}_{model_type}_tuning_eol{int(config.eol_capacity*100)}"
+        project_name=f"{config.project_name}_{model_task}_tuning_eol{int(config.eol_capacity*100)}"
     )
 
     # Perform hyperparameter search
@@ -169,10 +175,10 @@ def run_hyperparameter_search(config: Config, model_type="lstm"):
     best_params = best_hps.values
     logger.info(f"Best hyperparameters found: {best_params}")
 
-    # Save to JSON
+    # Save to JSON using model_task
     output_file = os.path.join(
         config.tuner_directory,
-        f"{config.project_name}_{model_type}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
+        f"{config.project_name}_{model_task}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
     )
     with open(output_file, 'w') as f:
         json.dump(best_params, f, indent=4)
@@ -180,16 +186,21 @@ def run_hyperparameter_search(config: Config, model_type="lstm"):
 
     return best_params
 
+
 def main():
     config = Config()
     try:
-        # Run for LSTM (regression)
-        lstm_params = run_hyperparameter_search(config, model_type="lstm")
-        print(f"Best LSTM hyperparameters: {lstm_params}")
+        # Define model_task based on config.classification
+        lstm_task = "lstm_regression" if not config.classification else "lstm_classification"
+        cnn_task = "cnn_classification" if config.classification else "cnn_regression"
 
-        # Run for CNN (classification)
-        cnn_params = run_hyperparameter_search(config, model_type="cnn")
-        print(f"Best CNN hyperparameters: {cnn_params}")
+        # Run for LSTM
+        lstm_params = run_hyperparameter_search(config, model_task=lstm_task)
+        print(f"Best LSTM hyperparameters for {lstm_task}: {lstm_params}")
+
+        # Run for CNN
+        cnn_params = run_hyperparameter_search(config, model_task=cnn_task)
+        print(f"Best CNN hyperparameters for {cnn_task}: {cnn_params}")
     except Exception as e:
         logger.error(f"Error during hyperparameter tuning: {str(e)}")
         raise

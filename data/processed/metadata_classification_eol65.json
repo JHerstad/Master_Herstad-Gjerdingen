@@ -1,7 +1,7 @@
 {
     "y_max": 1000.0,
-    "max_sequence_length": 120,
+    "seq_len": 120,
     "eol_capacity": 0.65,
     "classification": true,
-    "timestamp": "20250305_083841"
+    "timestamp": "20250305_132255"
 }

@@ -33,20 +33,28 @@ logger = logging.getLogger(__name__)
 # Add thesis_experiment/ to sys.path for imports (if needed when run standalone)
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
-def load_preprocessed_data(task_type: str, eol_capacity: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
+def load_preprocessed_data(model_task: str, eol_capacity: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
-    Loads preprocessed data and metadata from data/processed/ based on task type and EOL capacity.
+    Loads preprocessed data and metadata from data/processed/ based on model_task and EOL capacity.
 
     Args:
-        task_type (str): Either "classification" or "regression".
+        model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
         eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
 
     Returns:
         Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, metadata),
-               where metadata includes y_max, max_sequence_length, eol_capacity, classification, and timestamp.
+               where metadata includes y_max, seq_len, eol_capacity, classification, and timestamp.
     """
     output_dir = "data/processed/"
     eol_str = f"eol{int(eol_capacity*100)}"
+
+    # Extract task type from model_task for file naming consistency with preprocessing
+    if "regression" in model_task:
+        task_type = "regression"
+    elif "classification" in model_task:
+        task_type = "classification"
+    else:
+        raise ValueError(f"Invalid model_task: {model_task}. Must contain 'regression' or 'classification'.")
 
     # Find the most recent data files for the given task type and EOL capacity
     pattern = f"X_train_{task_type}_{eol_str}.npy"
@@ -71,12 +79,12 @@ def load_preprocessed_data(task_type: str, eol_capacity: float) -> Tuple[np.ndar
         metadata = json.load(f)
 
     # Validate metadata
-    if task_type == "regression" and "y_max" not in metadata:
-        raise ValueError(f"Missing y_max in metadata for regression task with EOL {eol_capacity}")
-    if "max_sequence_length" not in metadata:
-        raise ValueError(f"Missing max_sequence_length in metadata for {task_type} with EOL {eol_capacity}")
+    if "regression" in model_task and "y_max" not in metadata:
+        raise ValueError(f"Missing y_max in metadata for {model_task} with EOL {eol_capacity}")
+    if "seq_len" not in metadata:
+        raise ValueError(f"Missing seq_len in metadata for {model_task} with EOL {eol_capacity}")
 
-    logger.info(f"Loaded preprocessed data and metadata for {task_type} with EOL {eol_capacity}")
+    logger.info(f"Loaded preprocessed data and metadata for {model_task} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
 def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, input_shape: Tuple[int, int]) -> Tuple[tf.keras.Model, Dict]:
@@ -220,15 +228,14 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     return model, history.history
 
 
-def load_saved_model(task_type: str, eol_capacity: float, config: Config, model_type: str = "lstm") -> Optional[tf.keras.Model]:
+def load_saved_model(model_task: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
     """
-    Loads a previously saved best model (LSTM or CNN) for the specified task type and EOL capacity.
+    Loads a previously saved best model (LSTM or CNN) for the specified model_task and EOL capacity.
 
     Args:
-        task_type (str): Either "classification" or "regression".
+        model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
         eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
         config (Config): Configuration object with model parameters.
-        model_type (str, optional): Type of model to load ("lstm" or "cnn"). Defaults to "lstm".
 
     Returns:
         Optional[tf.keras.Model]: Loaded model if successful, None otherwise.
@@ -237,24 +244,22 @@ def load_saved_model(task_type: str, eol_capacity: float, config: Config, model_
     os.makedirs(model_dir, exist_ok=True)
     eol_str = f"eol{int(eol_capacity*100)}"
 
-    # Determine the model prefix based on task_type and model_type
-    if model_type == "lstm":
-        if task_type != "regression":
-            logger.warning(f"Task type '{task_type}' is not typical for LSTM; expected 'regression'. Proceeding anyway.")
-        pattern_best = f"lstm_{task_type}_{eol_str}_*_best.keras"
-    elif model_type == "cnn":
-        if task_type != "classification":
-            logger.warning(f"Task type '{task_type}' is not typical for CNN; expected 'classification'. Proceeding anyway.")
-        pattern_best = f"cnn_{task_type}_{eol_str}_*_best.keras"
+    # Extract model and task type from model_task
+    if "lstm_regression" in model_task:
+        pattern_best = f"lstm_regression_{eol_str}_*_best.keras"
+        model_name = "LSTM"
+    elif "cnn_classification" in model_task:
+        pattern_best = f"cnn_classification_{eol_str}_*_best.keras"
+        model_name = "CNN"
     else:
-        raise ValueError(f"Unsupported model_type: {model_type}. Must be 'lstm' or 'cnn'.")
+        raise ValueError(f"Unsupported model_task: {model_task}. Must be 'lstm_regression' or 'cnn_classification'.")
 
     all_files = os.listdir(model_dir)
     logger.debug(f"Files in {model_dir}: {all_files}")
 
     best_files = [f for f in all_files if fnmatch.fnmatch(f, pattern_best)]
     if not best_files:
-        logger.info(f"No saved best {model_type.upper()} model found for {task_type} with EOL {eol_capacity}")
+        logger.info(f"No saved best {model_name} model found for {model_task} with EOL {eol_capacity}")
         return None
 
     def extract_timestamp(filename: str) -> str:
@@ -266,27 +271,71 @@ def load_saved_model(task_type: str, eol_capacity: float, config: Config, model_
     latest_model = best_files[0]
     model_path = os.path.join(model_dir, latest_model)
 
-    logger.debug(f"Attempting to load best {model_type.upper()} model from {model_path}")
+    logger.debug(f"Attempting to load best {model_name} model from {model_path}")
     try:
         model = load_model(model_path)
-        logger.info(f"Loaded saved best {model_type.upper()} model from {model_path}")
+        logger.info(f"Loaded saved best {model_name} model from {model_path}")
         input_shape = (config.seq_len, 1)
         if model.input_shape[1:] != input_shape:
-            logger.warning(f"Input shape mismatch: saved best {model_type.upper()} model has {model.input_shape[1:]}, config expects {input_shape}")
+            logger.warning(f"Input shape mismatch: saved best {model_name} model has {model.input_shape[1:]}, config expects {input_shape}")
             return None
         return model
     except Exception as e:
-        logger.error(f"Failed to load saved best {model_type.upper()} model from {model_path}: {str(e)}")
+        logger.error(f"Failed to load saved best {model_name} model from {model_path}: {str(e)}")
         return None
-
 def main():
     """
-    Main function to run LSTM experiments for RUL regression on the Aachen dataset.
+    Main function to run experiments for RUL prediction on the Aachen dataset.
     """
     config = Config()
-    task_type = "classification" if config.classification else "regression"  # Derive task_type from config
+    model_task = "cnn_classification" if config.classification else "lstm_regression"
 
-    # TO BE implemented
+    try:
+        # Load preprocessed data
+        X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+            model_task, config.eol_capacity
+        )
+        input_shape = (metadata["seq_len"], 1)
+
+        # Validate data shapes
+        assert X_train.shape[-1] == 1, f"Features dimension incorrect for {model_task}"
+        assert X_train.shape[1] == metadata["seq_len"], f"Sequence length mismatch for {model_task}"
+        logger.info(f"Preprocessed data validated successfully for {model_task}")
+
+        # Load or train model
+        model = load_saved_model(model_task, config.eol_capacity, config)
+
+        if model is None:
+            logger.info(f"No saved {model_task} model found; training a new one.")
+            config.load_best_params(model_task="lstm" if "lstm" in model_task else "cnn")
+            if "regression" in model_task:
+                model, history = train_lstm_model(config, X_train, y_train, X_val, y_val, input_shape)
+            else:  # classification
+                model, history = train_cnn_model(config, X_train, y_train, X_val, y_val, input_shape)
+        else:
+            logger.info(f"Using pre-trained {model_task} model; skipping training.")
+            history = None  # No history if model is loaded
+
+        # Evaluate on test set (TO BE IMPLEMENTED with evaluate_model.py)
+        # Placeholder for evaluation
+        if "regression" in model_task:
+            test_loss, test_mae = model.evaluate(X_test, y_test, verbose=0)
+            results = {"test_loss": float(test_loss), "test_mae": float(test_mae)}
+        else:
+            test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+            results = {"test_loss": float(test_loss), "test_accuracy": float(test_acc)}
+
+        results.update({
+            "eol_capacity": config.eol_capacity,
+            "timestamp": datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        })
+        os.makedirs(os.path.join("experiments", "results"), exist_ok=True)
+        np.save(os.path.join("experiments", "results", f"{model_task}_results_eol{int(config.eol_capacity*100)}_{results['timestamp']}.npy"), results)
+        logger.info(f"{model_task.upper()} experiment completed and results stored")
+
+    except Exception as e:
+        logger.error(f"Error in {model_task} experiment: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
