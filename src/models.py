@@ -228,7 +228,7 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     return model, history.history
 
 
-def load_saved_model(model_task: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
+def load_saved_model(model_task: str, config: Config) -> Optional[tf.keras.Model]:
     """
     Loads a previously saved best model (LSTM or CNN) for the specified model_task and EOL capacity.
 
@@ -242,6 +242,8 @@ def load_saved_model(model_task: str, eol_capacity: float, config: Config) -> Op
     """
     model_dir = os.path.join("experiments", "models")
     os.makedirs(model_dir, exist_ok=True)
+
+    eol_capacity = config.eol_capacity
     eol_str = f"eol{int(eol_capacity*100)}"
 
     # Extract model and task type from model_task
@@ -283,6 +285,7 @@ def load_saved_model(model_task: str, eol_capacity: float, config: Config) -> Op
     except Exception as e:
         logger.error(f"Failed to load saved best {model_name} model from {model_path}: {str(e)}")
         return None
+    
 def main():
     """
     Main function to run experiments for RUL prediction on the Aachen dataset.
