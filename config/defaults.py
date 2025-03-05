@@ -6,6 +6,7 @@ explainability scripts to ensure consistency and reproducibility.
 
 from dataclasses import dataclass
 import os
+import json
 
 
 @dataclass
@@ -72,6 +73,8 @@ class Config:
     conv3_filters: int = 64
     conv3_kernel_size: int = 5
     l2_reg: float = 0.001
+    cnn_dense_units: int = 64  # Number of units in the dense layer before output
+    cnn_dropout_rate: float = 0.2  # Dropout rate for regularization
     
 
     def load_best_params(self, model_type: str = "lstm", eol_capacity: float = None) -> None:

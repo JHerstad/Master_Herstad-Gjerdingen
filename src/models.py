@@ -14,8 +14,11 @@ import numpy as np
 import logging
 from typing import Tuple, Dict, Optional
 import tensorflow as tf
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Masking, Input
+from tensorflow.keras.models import Sequential, Model, load_model
+from tensorflow.keras.layers import (
+    LSTM, Dense, Dropout, Masking, Input, Conv1D, BatchNormalization, MaxPooling1D, Flatten
+)
+from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from config.defaults import Config
@@ -90,7 +93,8 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
     """
     # Build model using tuned parameters from config
     model = Sequential([
-        Masking(mask_value=0.0, input_shape=input_shape),
+        Input(shape=input_shape),
+        Masking(mask_value=0.0),
         LSTM(
             units=config.lstm_units,
             activation='tanh',
@@ -134,21 +138,123 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
 
     return model, history.history
 
-def load_saved_model(task_type: str, eol_capacity: float, config: Config) -> Optional[tf.keras.Model]:
+def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, input_shape: Tuple[int, int]) -> Tuple[tf.keras.Model, Dict]:
     """
-    Loads a previously saved best LSTM model for the specified task type and EOL capacity.
+    Trains a CNN model for RUL classification using tuned hyperparameters from config.
+
+    Args:
+        config (Config): Configuration object with tuned hyperparameters.
+        X_train, y_train, X_val, y_val (np.ndarray): Training and validation data.
+        input_shape (Tuple[int, int]): Shape of input sequences (seq_len, 1).
+        num_classes (int): Number of RUL classes for classification.
+
+    Returns:
+        Tuple: (trained model, training history).
+    """
+    # Build model using tuned parameters from config
+    model = Sequential([
+        Input(shape=input_shape),
+        Conv1D(
+            filters=config.conv1_filters,
+            kernel_size=config.conv1_kernel_size,
+            activation='relu',
+            kernel_regularizer=l2(config.l2_reg)
+        ),
+        BatchNormalization(),
+        MaxPooling1D(pool_size=2),
+        Conv1D(
+            filters=config.conv2_filters,
+            kernel_size=config.conv2_kernel_size,
+            activation='relu',
+            kernel_regularizer=l2(config.l2_reg)
+        ),
+        BatchNormalization(),
+        MaxPooling1D(pool_size=2),
+        Conv1D(
+            filters=config.conv3_filters,
+            kernel_size=config.conv3_kernel_size,
+            activation='relu',
+            kernel_regularizer=l2(config.l2_reg)
+        ),
+        BatchNormalization(),
+        MaxPooling1D(pool_size=2),
+        Flatten(),
+        Dense(
+            units=config.cnn_dense_units,
+            activation='relu',
+            kernel_regularizer=l2(config.l2_reg)
+        ),
+        Dropout(config.cnn_dropout_rate),
+        Dense(7, activation='softmax')
+    ])
+    optimizer = Adam(learning_rate=config.learning_rate)
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+    logger.info("CNN model built with tuned config: %s", str(config))
+
+    # Define callbacks
+    callbacks = [
+        EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
+        ModelCheckpoint(
+            os.path.join("experiments", "models", f"cnn_classification_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_best.keras"),
+            monitor='val_loss',
+            save_best_only=True,
+            verbose=1
+        )
+    ]
+
+    # Train the model
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=config.epochs,
+        batch_size=config.batch_size,
+        verbose=1,
+        callbacks=callbacks
+    )
+
+    final_model_path = os.path.join("experiments", "models", f"cnn_classification_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
+    os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
+    model.save(final_model_path)
+    logger.info(f"Final CNN model saved to {final_model_path}")
+
+    return model, history.history
+
+
+def load_saved_model(task_type: str, eol_capacity: float, config: Config, model_type: str = "lstm") -> Optional[tf.keras.Model]:
+    """
+    Loads a previously saved best model (LSTM or CNN) for the specified task type and EOL capacity.
+
+    Args:
+        task_type (str): Either "classification" or "regression".
+        eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
+        config (Config): Configuration object with model parameters.
+        model_type (str, optional): Type of model to load ("lstm" or "cnn"). Defaults to "lstm".
+
+    Returns:
+        Optional[tf.keras.Model]: Loaded model if successful, None otherwise.
     """
     model_dir = os.path.join("experiments", "models")
     os.makedirs(model_dir, exist_ok=True)
     eol_str = f"eol{int(eol_capacity*100)}"
-    pattern_best = f"lstm_{task_type}_{eol_str}_*_best.keras"
+
+    # Determine the model prefix based on task_type and model_type
+    if model_type == "lstm":
+        if task_type != "regression":
+            logger.warning(f"Task type '{task_type}' is not typical for LSTM; expected 'regression'. Proceeding anyway.")
+        pattern_best = f"lstm_{task_type}_{eol_str}_*_best.keras"
+    elif model_type == "cnn":
+        if task_type != "classification":
+            logger.warning(f"Task type '{task_type}' is not typical for CNN; expected 'classification'. Proceeding anyway.")
+        pattern_best = f"cnn_{task_type}_{eol_str}_*_best.keras"
+    else:
+        raise ValueError(f"Unsupported model_type: {model_type}. Must be 'lstm' or 'cnn'.")
 
     all_files = os.listdir(model_dir)
     logger.debug(f"Files in {model_dir}: {all_files}")
 
     best_files = [f for f in all_files if fnmatch.fnmatch(f, pattern_best)]
     if not best_files:
-        logger.info(f"No saved best model found for {task_type} with EOL {eol_capacity}")
+        logger.info(f"No saved best {model_type.upper()} model found for {task_type} with EOL {eol_capacity}")
         return None
 
     def extract_timestamp(filename: str) -> str:
@@ -160,17 +266,17 @@ def load_saved_model(task_type: str, eol_capacity: float, config: Config) -> Opt
     latest_model = best_files[0]
     model_path = os.path.join(model_dir, latest_model)
 
-    logger.debug(f"Attempting to load best model from {model_path}")
+    logger.debug(f"Attempting to load best {model_type.upper()} model from {model_path}")
     try:
         model = load_model(model_path)
-        logger.info(f"Loaded saved best model from {model_path}")
+        logger.info(f"Loaded saved best {model_type.upper()} model from {model_path}")
         input_shape = (config.seq_len, 1)
         if model.input_shape[1:] != input_shape:
-            logger.warning(f"Input shape mismatch: saved best model has {model.input_shape[1:]}, config expects {input_shape}")
+            logger.warning(f"Input shape mismatch: saved best {model_type.upper()} model has {model.input_shape[1:]}, config expects {input_shape}")
             return None
         return model
     except Exception as e:
-        logger.error(f"Failed to load saved best model from {model_path}: {str(e)}")
+        logger.error(f"Failed to load saved best {model_type.upper()} model from {model_path}: {str(e)}")
         return None
 
 def main():
@@ -180,38 +286,7 @@ def main():
     config = Config()
     task_type = "classification" if config.classification else "regression"  # Derive task_type from config
 
-    try:
-        # Load preprocessed data
-        X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
-            task_type, config.eol_capacity
-        )
-
-        # Validate data shapes
-        assert X_train.shape[-1] == 1, "Features dimension incorrect for LSTM"
-        assert X_train.shape[1] == metadata["max_sequence_length"], "Sequence length mismatch"
-        logger.info("Preprocessed data validated successfully")
-
-        # Build and train the model
-        model = build_lstm_model((metadata["max_sequence_length"], 1), config)
-        history = train_lstm_model(model, X_train, y_train, X_val, y_val, config)
-
-        # Note: evaluate_lstm_model, plot_training_history, etc., are missing; assuming they’re defined elsewhere
-        # For completeness, here’s a placeholder evaluation
-        test_loss, test_mae = model.evaluate(X_test, y_test, verbose=0)
-
-        results = {
-            "test_loss": float(test_loss),
-            "test_mae": float(test_mae),
-            "eol_capacity": config.eol_capacity,
-            "timestamp": datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        }
-        os.makedirs(os.path.join("experiments", "results"), exist_ok=True)
-        np.save(os.path.join("experiments", "results", f"lstm_results_eol{int(config.eol_capacity*100)}_{results['timestamp']}.npy"), results)
-        logger.info("LSTM experiment completed and results stored")
-
-    except Exception as e:
-        logger.error("Error in LSTM experiment: %s", str(e))
-        raise
+    # TO BE implemented
 
 if __name__ == "__main__":
     main()

@@ -100,11 +100,11 @@ def build_cnn_model(hp, input_shape):
 
     x = Flatten()(x)
     x = Dense(
-        units=hp.Int('dense_units', min_value=64, max_value=256, step=64),  # CNN-specific, not prefixed
+        units=hp.Int('cnn_dense_units', min_value=64, max_value=256, step=64),
         activation='relu',
         kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
     )(x)
-    x = Dropout(rate=hp.Float('dropout_rate', min_value=0.3, max_value=0.7, step=0.1))(x)  # CNN-specific, not prefixed
+    x = Dropout(rate=hp.Float('cnn_dropout_rate', min_value=0.3, max_value=0.7, step=0.1))(x)
     output_layer = Dense(7, activation='softmax')(x)
 
     model = Model(inputs=input_layer, outputs=output_layer)
