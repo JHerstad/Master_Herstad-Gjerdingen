@@ -125,42 +125,38 @@ def prepare_data_regression(df: pd.DataFrame, seq_len: int) -> Tuple[np.ndarray,
     return X, y
 
 
-def preprocess_aachen_dataset(
-    data_path: str,
-    test_cell_count: int = Config().test_cell_count,
-    random_state: int = 42,
-    log_transform: bool = False,
-    classification: bool = False
-) -> Dict:
+def preprocess_aachen_dataset(config: Config) -> None:
     """
     Loads and preprocesses the Aachen dataset for RUL classification or regression,
-    supporting both classification (CNN, fixed sequence length) and regression (LSTM, fixed-length
-    padded sequences). Automatically stores preprocessed data in data/processed/ for reproducibility.
+    supporting both classification (CNN) and regression (LSTM) tasks with fixed-length sequences.
+    Saves preprocessed data arrays and metadata to data/processed/ for reproducibility.
 
     Args:
-        data_path (str): Path to the '.mat' file containing the dataset.
-        test_cell_count (int): Number of unique cells to hold out for testing.
-        random_state (int): Seed for random operations.
-        log_transform (bool): Whether to apply log transform to RUL values for regression.
-        classification (bool): If True, prepare data for classification (CNN) with fixed sequence length
-                             from config; if False, prepare for regression (LSTM) with fixed sequence length.
+        config (Config): Configuration object with preprocessing parameters:
+            - data_path (str): Path to the '.mat' file containing the dataset.
+            - test_cell_count (int): Number of unique cells to reserve for testing.
+            - random_state (int): Seed for reproducible train/validation splitting.
+            - log_transform (bool): If True, applies log transform to RUL values (regression only).
+            - classification (bool): If True, prepares data for classification with binned RUL;
+                                   if False, prepares data for regression with continuous RUL.
+            - eol_capacity (float): Fraction of initial capacity defining EOL (e.g., 0.65).
+            - seq_len (int): Length to which capacity sequences are truncated.
 
     Returns:
-        Dict: Preprocessed data including X_train, X_val, X_test, y_train, y_val, y_test,
-              y_max, label_mapping (for classification), df_filtered, and max_sequence_length (for both).
+        None: Does not return data directly; instead, saves:
+            - X_train, X_val, X_test (np.ndarray): Normalized sequences to .npy files.
+            - y_train, y_val, y_test (np.ndarray): Targets (one-hot for classification, normalized RUL for regression) to .npy files.
+            - Metadata (dict): Includes y_max, seq_len, eol_capacity, classification, and timestamp, saved as JSON.
     """
-    # Set random seed for reproducibility
-    np.random.seed(random_state)
-
-    # Load dataset into a pandas DataFrame
-    data_loader = mat4py.loadmat(data_path)
-    df = pd.DataFrame.from_dict(data_loader["TDS"])
-
-    # Compute EOL and RUL, filter invalid entries
-    config = Config()
+    classification = config.classification
     eol_capacity = config.eol_capacity
     seq_len = config.seq_len
+    
+    # Load dataset into a pandas DataFrame using mat4py. Path from Config
+    data_loader = mat4py.loadmat(config.data_path)
+    df = pd.DataFrame.from_dict(data_loader["TDS"])
 
+    # Compute EOL and RUL for each sequence based on EOL capacity
     df[["EOL", "RUL"]] = df.apply(compute_eol_and_rul, axis=1, fraction=eol_capacity)
     df_filtered = df.dropna(subset=["RUL"])
 
@@ -180,7 +176,7 @@ def preprocess_aachen_dataset(
 
     # Split data by cell into train/val/test
     # Hold back specific cells for testing
-    cells_to_hold_back = df_filtered["Cell"].unique()[:test_cell_count]
+    cells_to_hold_back = df_filtered["Cell"].unique()[:config.test_cell_count]
     df_test = df_filtered[df_filtered["Cell"].isin(cells_to_hold_back)]
     df_train_val = df_filtered[~df_filtered["Cell"].isin(cells_to_hold_back)]
 
@@ -188,7 +184,7 @@ def preprocess_aachen_dataset(
     df_train, df_val = train_test_split(
         df_train_val,
         test_size=0.2,
-        random_state=random_state,
+        random_state=config.random_state,
         stratify=df_train_val["Cell"]
     )
 
@@ -210,7 +206,7 @@ def preprocess_aachen_dataset(
         y_test = to_categorical(y_test, num_classes=num_classes)
     else:
         # Apply log transform to RUL if specified
-        if log_transform:
+        if config.log_transform:
             y_train = np.log1p(y_train)  # Use log1p for robustness
             y_val = np.log1p(y_val)
             y_test = np.log1p(y_test)
