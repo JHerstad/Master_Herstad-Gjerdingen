@@ -185,25 +185,3 @@ def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression
     logger.info(f"Best hyperparameters saved to: {output_file}")
 
     return best_params
-
-
-def main():
-    config = Config()
-    try:
-        # Define model_task based on config.classification
-        lstm_task = "lstm_regression" if not config.classification else "lstm_classification"
-        cnn_task = "cnn_classification" if config.classification else "cnn_regression"
-
-        # Run for LSTM
-        lstm_params = run_hyperparameter_search(config, model_task=lstm_task)
-        print(f"Best LSTM hyperparameters for {lstm_task}: {lstm_params}")
-
-        # Run for CNN
-        cnn_params = run_hyperparameter_search(config, model_task=cnn_task)
-        print(f"Best CNN hyperparameters for {cnn_task}: {cnn_params}")
-    except Exception as e:
-        logger.error(f"Error during hyperparameter tuning: {str(e)}")
-        raise
-
-if __name__ == "__main__":
-    main()
