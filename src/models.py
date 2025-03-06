@@ -87,18 +87,18 @@ def load_preprocessed_data(model_task: str, eol_capacity: float) -> Tuple[np.nda
     logger.info(f"Loaded preprocessed data and metadata for {model_task} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
-def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, input_shape: Tuple[int, int]) -> Tuple[tf.keras.Model, Dict]:
+def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
     """
     Trains an LSTM model for RUL regression using tuned hyperparameters from config.
 
     Args:
         config (Config): Configuration object with tuned hyperparameters.
         X_train, y_train, X_val, y_val (np.ndarray): Training and validation data.
-        input_shape (Tuple[int, int]): Shape of input sequences (seq_len, 1).
 
     Returns:
         Tuple: (trained model, training history).
     """
+    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train
     # Build model using tuned parameters from config
     model = Sequential([
         Input(shape=input_shape),
@@ -146,19 +146,18 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
 
     return model, history.history
 
-def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, input_shape: Tuple[int, int]) -> Tuple[tf.keras.Model, Dict]:
+def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
     """
     Trains a CNN model for RUL classification using tuned hyperparameters from config.
 
     Args:
         config (Config): Configuration object with tuned hyperparameters.
         X_train, y_train, X_val, y_val (np.ndarray): Training and validation data.
-        input_shape (Tuple[int, int]): Shape of input sequences (seq_len, 1).
-        num_classes (int): Number of RUL classes for classification.
 
     Returns:
         Tuple: (trained model, training history).
     """
+    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train
     # Build model using tuned parameters from config
     model = Sequential([
         Input(shape=input_shape),
