@@ -100,21 +100,44 @@ def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoRe
     plt.savefig(os.path.join(output_dir, filename))
     plt.close()
 
-def plot_training_history(history: Dict) -> None:
+def plot_training_history(history: Dict, model_task: str) -> None:
     """
-    Plots the training and validation loss over epochs.
+    Plots the training and validation metrics over epochs dynamically based on model_task.
 
     Args:
-        history (Dict): Training history containing 'loss' and 'val_loss'.
+        history (Dict): Training history containing 'loss', 'val_loss', and task-specific metrics
+                       ('mae' for regression, 'accuracy' for classification).
+        model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
     """
     import matplotlib.pyplot as plt
     plt.figure(figsize=(10, 6))
+
+    # Plot loss (common to both regression and classification)
     plt.plot(history['loss'], label='Training Loss', marker='o')
     plt.plot(history['val_loss'], label='Validation Loss', marker='o')
-    plt.title("Training and Validation Loss for LSTM")
+
+    # Determine task type and additional metric
+    if "regression" in model_task:
+        metric_key = 'mae'
+        metric_label = 'MAE'
+        model_name = "LSTM" if "lstm" in model_task else "CNN"
+        plt.title(f"Training and Validation Loss/MAE for {model_name} Regression")
+    elif "classification" in model_task:
+        metric_key = 'accuracy'
+        metric_label = 'Accuracy'
+        model_name = "CNN" if "cnn" in model_task else "LSTM"
+        plt.title(f"Training and Validation Loss/Accuracy for {model_name} Classification")
+    else:
+        raise ValueError(f"Unsupported model_task: {model_task}. Must contain 'regression' or 'classification'.")
+
+    # Plot the task-specific metric if available
+    if metric_key in history:
+        plt.plot(history[metric_key], label=f'Training {metric_label}', marker='x')
+    if f'val_{metric_key}' in history:
+        plt.plot(history[f'val_{metric_key}'], label=f'Validation {metric_label}', marker='x')
+
     plt.xlabel("Epochs")
-    plt.ylabel("Loss")
+    plt.ylabel(f"Loss and {metric_label}")
     plt.legend()
     plt.grid()
-    plt.savefig(os.path.join("experiments", "results", f"lstm_training_loss_eol{int(Config().eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"))
-    plt.close()
+    plt.show()
