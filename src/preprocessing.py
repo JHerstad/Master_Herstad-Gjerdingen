@@ -183,7 +183,7 @@ def preprocess_aachen_dataset(config: Config) -> None:
     # Split the remaining data into training and validation sets
     df_train, df_val = train_test_split(
         df_train_val,
-        test_size=0.2,
+        test_size=config.val_split_ratio,
         random_state=config.random_state,
         stratify=df_train_val["Cell"]
     )
