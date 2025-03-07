@@ -47,8 +47,8 @@ class Config:
     
     # Grid Search
     batch_size: int = 32        # Default batch size for training/tuning
-    max_trials: int = 5        # Default number of trials for hyperparameter tuning
-    tuning_epochs: int = 10      # Default epochs for tuning (kept low for speed)
+    max_trials: int = 20        # Default number of trials for hyperparameter tuning
+    tuning_epochs: int = 50      # Default epochs for tuning (kept low for speed)
     tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")  # Default directory for tuning results
 
     # LSTM model
