@@ -102,7 +102,6 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
     # Build model using tuned parameters from config
     model = Sequential([
         Input(shape=input_shape),
-        Masking(mask_value=0.0),
         LSTM(
             units=config.lstm_units,
             activation='tanh',
