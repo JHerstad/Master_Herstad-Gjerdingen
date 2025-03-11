@@ -1,17 +1,10 @@
-python
-
-Collapse
-
-Wrap
-
-Copy
 """
 Module defining default configuration settings for preprocessing and modeling the Aachen
 battery degradation dataset. This configuration is used across preprocessing, modeling, and
 explainability scripts to ensure consistency and reproducibility.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 import json
 
@@ -51,9 +44,9 @@ class Config:
     seq_len: int = 120          # Default sequence length
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
-    bins: list = [0, 200, 300, 400, 500, 600, 700, float("inf")]  # Default RUL bins for classification
-    labels: list = ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"]  # Default bin labels
-    
+    bins: list = field(default_factory=lambda: [0, 200, 300, 400, 500, 600, 700, float("inf")])
+    labels: list = field(default_factory=lambda: ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"])
+
     # Grid Search
     batch_size: int = 32        # Default batch size for training/tuning
     max_trials: int = 20        # Default number of trials for hyperparameter tuning
