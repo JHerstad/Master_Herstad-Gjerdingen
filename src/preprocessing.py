@@ -163,14 +163,12 @@ def preprocess_aachen_dataset(config: Config) -> None:
     # Filter sequences based on seq_len
     df_filtered = df_filtered[df_filtered["History"].apply(lambda x: len(x) >= seq_len)]
 
-    # Define RUL bins and labels for classification only
+    # Define RUL bins and labels for classification using config values
     label_mapping = None
     if classification:
-        bins = [0, 200, 300, 400, 500, 600, 700, np.inf]
-        labels = ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"]
+        if len(bins) - 1 != len(labels):
+            raise ValueError(f"Number of bins ({len(bins)}) must match number of labels + 1 ({len(labels)})")
         df_filtered["RUL_binned"] = pd.cut(df_filtered["RUL"], bins=bins, labels=labels, include_lowest=True)
-
-        # Map RUL bins to integers
         label_mapping = {label: i for i, label in enumerate(labels)}
         df_filtered["RUL_binned_int"] = df_filtered["RUL_binned"].map(label_mapping)
 

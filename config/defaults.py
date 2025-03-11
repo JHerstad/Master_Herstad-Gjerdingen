@@ -1,3 +1,10 @@
+python
+
+Collapse
+
+Wrap
+
+Copy
 """
 Module defining default configuration settings for preprocessing and modeling the Aachen
 battery degradation dataset. This configuration is used across preprocessing, modeling, and
@@ -21,18 +28,18 @@ class Config:
         test_cell_count (int): Number of unique cells to hold out for testing.
         random_state (int): Random seed for reproducibility of splits and sampling.
         log_transform (bool): Whether to apply a log transform to RUL values for regression (LSTM) models.
-        classification (bool): If True, prepare data for classification (CNN) with fixed sequence length;
-                             if False, prepare for regression (LSTM) with variable length.
-        seq_len (int): Configurable sequence length for both classification (fixed) and regression (optional truncation).
+        classification (bool): If True, prepare data for classification (CNN); if False, for regression (LSTM).
+        seq_len (int): Configurable sequence length for both classification and regression.
         train_split_ratio (float): Ratio of data to use for training (e.g., 0.8 for 80% training).
         val_split_ratio (float): Ratio of training data to use for validation (e.g., 0.2 for 20% validation).
         batch_size (int): Batch size for training and hyperparameter tuning.
         max_trials (int): Maximum number of hyperparameter combinations to try in tuning.
         tuning_epochs (int): Number of epochs for each trial during hyperparameter tuning.
         tuner_directory (str): Directory to store hyperparameter tuning results.
+        bins (list): List of bin edges for RUL classification (e.g., [0, 200, 300, ...]).
+        labels (list): List of labels for RUL bins (e.g., ["0-200", "200-300", ...]).
     """
     project_name: str = "Experiment1"
-    
     data_path: str = os.path.join("data", "raw", "Degradation_Prediction_Dataset_ISEA.mat")
     
     # Preprocessing
@@ -40,32 +47,29 @@ class Config:
     test_cell_count: int = 3    # Default number of test cells
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression
-    classification: bool = False # Default to regression (LSTM), False; True for classification (CNN)
-    seq_len: int = 120          # Default sequence length for fixed-length classification or optional truncation in regression
+    classification: bool = False # Default to regression (LSTM); True for classification (CNN)
+    seq_len: int = 120          # Default sequence length
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
+    bins: list = [0, 200, 300, 400, 500, 600, 700, float("inf")]  # Default RUL bins for classification
+    labels: list = ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"]  # Default bin labels
     
     # Grid Search
     batch_size: int = 32        # Default batch size for training/tuning
     max_trials: int = 20        # Default number of trials for hyperparameter tuning
-    tuning_epochs: int = 50      # Default epochs for tuning (kept low for speed)
-    tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")  # Default directory for tuning results
+    tuning_epochs: int = 50     # Default epochs for tuning
+    tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")
 
     # LSTM model
-    # Architecture
-    lstm_units = 32  # Number of LSTM units (default, can be overridden by hyperparameter tuning)
-    lstm_dropout_rate = 0.2  # Dropout rate for regularization
-    lstm_dense_units = 16  # Number of units in the fully connected layer
-    
-   
-    # Training
-    learning_rate = 0.001  # Learning rate for Adam optimizer
-    clipnorm = 1.0  # Gradient clipping norm for stable training
-    epochs = 50  # Maximum number of training epochs
-    patience = 20  # Early stopping patience
+    lstm_units: int = 32
+    lstm_dropout_rate: float = 0.2
+    lstm_dense_units: int = 16
+    learning_rate: float = 0.001
+    clipnorm: float = 1.0
+    epochs: int = 50
+    patience: int = 20
 
     # CNN model
-    # Architecture
     conv1_filters: int = 32
     conv1_kernel_size: int = 11
     conv2_filters: int = 64
@@ -73,9 +77,8 @@ class Config:
     conv3_filters: int = 64
     conv3_kernel_size: int = 5
     l2_reg: float = 0.001
-    cnn_dense_units: int = 64  # Number of units in the dense layer before output
-    cnn_dropout_rate: float = 0.2  # Dropout rate for regularization
-    
+    cnn_dense_units: int = 64
+    cnn_dropout_rate: float = 0.2
 
     def load_best_params(self, model_task: str = "lstm_regression", eol_capacity: float = None) -> None:
         """
@@ -97,7 +100,6 @@ class Config:
             try:
                 with open(tuning_file, 'r') as f:
                     best_params = json.load(f)
-                # Update attributes with tuned values if they exist in Config
                 for key, value in best_params.items():
                     if hasattr(self, key):
                         setattr(self, key, value)
@@ -111,7 +113,6 @@ class Config:
 
 
 if __name__ == "__main__":
-    # Example usage for testing or validation
     config = Config()
     print("Default Configuration:")
     for key, value in config.__dict__.items():
