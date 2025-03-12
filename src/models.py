@@ -89,7 +89,7 @@ def load_preprocessed_data(model_task: str, eol_capacity: float) -> Tuple[np.nda
 
 def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
     """
-    Trains an LSTM model for RUL regression using tuned hyperparameters from config.
+    Trains an LSTM model for RUL regression using tuned hyperparameters from config with Functional API.
 
     Args:
         config (Config): Configuration object with tuned hyperparameters.
@@ -98,30 +98,38 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
     Returns:
         Tuple: (trained model, training history).
     """
-    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train
-    # Build model using tuned parameters from config
-    model = Sequential([
-        Input(shape=input_shape),
-        LSTM(
-            units=config.lstm_units,
-            activation='tanh',
-            recurrent_activation='sigmoid',
-            return_sequences=False,
-            unroll=False
-        ),
-        Dropout(config.lstm_dropout_rate),
-        Dense(config.lstm_dense_units, activation='tanh'),
-        Dense(1)
-    ])
+    # Derive input shape from X_train
+    input_shape = (X_train.shape[1], X_train.shape[2])  # (timesteps, features), e.g., (120, 1)
+    logger.info(f"Input shape derived from X_train: {input_shape}")
+
+    # Define the model using Functional API
+    inputs = Input(shape=input_shape)
+    x = LSTM(
+        units=config.lstm_units,
+        activation='tanh',
+        recurrent_activation='sigmoid',
+        return_sequences=False,
+        unroll=False,
+        name="lstm"  # Explicitly named for stability analysis
+    )(inputs)
+    x = Dropout(config.lstm_dropout_rate)(x)
+    x = Dense(config.lstm_dense_units, activation='tanh')(x)
+    outputs = Dense(1)(x)
+
+    # Create the model
+    model = Model(inputs=inputs, outputs=outputs)
+
+    # Compile the model
     optimizer = Adam(learning_rate=config.learning_rate, clipnorm=config.clipnorm)
     model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
     logger.info("LSTM model built with tuned config: %s", str(config))
 
     # Define callbacks
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
         ModelCheckpoint(
-            os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_best.keras"),
+            os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{timestamp}_best.keras"),
             monitor='val_loss',
             save_best_only=True,
             verbose=1
@@ -138,7 +146,8 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
         callbacks=callbacks
     )
 
-    final_model_path = os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
+    # Save the final model
+    final_model_path = os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{timestamp}_final.keras")
     os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
     model.save(final_model_path)
     logger.info(f"Final LSTM model saved to {final_model_path}")

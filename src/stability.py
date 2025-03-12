@@ -41,7 +41,7 @@ def calculate_stability_ratio(values_orig, values_perturbed, input_orig, input_p
 
 def get_representation_model(model, layer_name=None):
     """
-    Create a model that outputs the hidden states from a specified layer.
+    Create a model that outputs the hidden states from a specified layer without relying on model.input.
     
     Parameters:
     - model: Trained Keras model (e.g., LSTM).
@@ -58,7 +58,18 @@ def get_representation_model(model, layer_name=None):
         if layer_name is None:
             raise ValueError("No LSTM layer found in the model.")
     
-    return Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
+    # Use the model's expected input shape (excluding batch size)
+    input_shape = model.layers[0].input_shape[1:]  # e.g., (120, 1)
+    new_input = Input(shape=input_shape)
+    
+    # Rebuild the model up to the specified layer
+    x = new_input
+    for layer in model.layers:
+        x = layer(x)
+        if layer.name == layer_name:
+            break
+    
+    return Model(inputs=new_input, outputs=x)
 
 def calculate_relative_input_stability(model, X_background, test, 
                                       n_perturbations=20, noise_scale=0.1, nsamples=100, runs=1):
