@@ -35,13 +35,13 @@ def build_lstm_model(hp, input_shape):
         Compiled LSTM model with tunable hyperparameters for RUL regression.
     """
     model = Sequential([
-        Masking(mask_value=0.0, input_shape=input_shape),
         LSTM(
             units=hp.Int("lstm_units", min_value=16, max_value=64, step=16),
             activation='tanh',
             recurrent_activation='sigmoid',
             return_sequences=False,
-            unroll=False
+            unroll=False,
+            input_shape=input_shape
         ),
         Dropout(
             rate=hp.Float("lstm_dropout_rate", min_value=0.1, max_value=0.5, step=0.1)
