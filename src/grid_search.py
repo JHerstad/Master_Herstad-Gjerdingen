@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def build_lstm_model(hp, input_shape):
     """
-    Keras Tuner-compatible function for hyperparameter tuning of the LSTM model (regression).
+    Keras Tuner-compatible function for hyperparameter tuning of the LSTM model (regression) using Functional API.
 
     Args:
         hp: Hyperparameters object from Keras Tuner.
@@ -34,24 +34,37 @@ def build_lstm_model(hp, input_shape):
     Returns:
         Compiled LSTM model with tunable hyperparameters for RUL regression.
     """
-    model = Sequential([
-        LSTM(
-            units=hp.Int("lstm_units", min_value=16, max_value=64, step=16),
-            activation='tanh',
-            recurrent_activation='sigmoid',
-            return_sequences=False,
-            unroll=False,
-            input_shape=input_shape
-        ),
-        Dropout(
-            rate=hp.Float("lstm_dropout_rate", min_value=0.1, max_value=0.5, step=0.1)
-        ),
-        Dense(
-            units=hp.Int("lstm_dense_units", min_value=8, max_value=64, step=8),
-            activation='tanh'
-        ),
-        Dense(1)  # Regression output
-    ])
+    # Define input
+    inputs = Input(shape=input_shape)
+
+    # LSTM layer
+    x = LSTM(
+        units=hp.Int("lstm_units", min_value=16, max_value=64, step=16),
+        activation='tanh',
+        recurrent_activation='sigmoid',
+        return_sequences=False,
+        unroll=False,
+        name="lstm"  # Explicitly named for stability analysis
+    )(inputs)
+
+    # Dropout layer
+    x = Dropout(
+        rate=hp.Float("lstm_dropout_rate", min_value=0.1, max_value=0.5, step=0.1)
+    )(x)
+
+    # Dense layer
+    x = Dense(
+        units=hp.Int("lstm_dense_units", min_value=8, max_value=64, step=8),
+        activation='tanh'
+    )(x)
+
+    # Output layer
+    outputs = Dense(1)(x)
+
+    # Create model
+    model = Model(inputs=inputs, outputs=outputs)
+
+    # Compile model
     optimizer = Adam(
         learning_rate=hp.Choice("learning_rate", values=[0.001, 0.01, 0.1]),
         clipnorm=hp.Float("clipnorm", min_value=0.5, max_value=1.5, step=0.5)
@@ -114,7 +127,7 @@ def build_cnn_model(hp, input_shape):
     model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
-def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression"):
+def run_hyperparameter_search(config, model_task: str = "lstm_regression"):
     """
     Runs hyperparameter tuning using Keras Tuner with Bayesian Optimization.
 
@@ -128,14 +141,15 @@ def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression
     """
     logger.info(f"Running hyperparameter search for: {model_task}")
 
-    # Load preprocessed data using model_task
+    # Load preprocessed data
     logger.info(f"Loading preprocessed data for hyperparameter tuning with {model_task}...")
     X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
         model_task, config.eol_capacity
     )
     input_shape = (metadata["seq_len"], 1)
+    logger.info(f"Input shape: {input_shape}, X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
 
-    # Select model-building function and objective based on model_task
+    # Select model-building function and objective
     if "lstm" in model_task:
         if "regression" not in model_task:
             logger.warning(f"{model_task} specified, but LSTM typically used for regression.")
@@ -145,9 +159,9 @@ def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression
         if "classification" not in model_task:
             logger.warning(f"{model_task} specified, but CNN typically used for classification.")
         build_fn = lambda hp: build_cnn_model(hp, input_shape)
-        objective = "val_accuracy"  # Classification uses accuracy
+        objective = "val_loss"  # Use val_loss for consistency (or val_accuracy for classification)
     else:
-        raise ValueError(f"Unsupported model_task: {model_task}. Must be 'lstm_regression' or 'cnn_classification'.")
+        raise ValueError(f"Unsupported model_task: {model_task}. Must include 'lstm' or 'cnn'.")
 
     # Set up the Keras Tuner
     tuner = kt.BayesianOptimization(
@@ -175,13 +189,27 @@ def run_hyperparameter_search(config: Config, model_task: str = "lstm_regression
     best_params = best_hps.values
     logger.info(f"Best hyperparameters found: {best_params}")
 
-    # Save to JSON using model_task
+    # Save best hyperparameters to JSON
     output_file = os.path.join(
         config.tuner_directory,
         f"{config.project_name}_{model_task}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
     )
-    with open(output_file, 'w') as f:
-        json.dump(best_params, f, indent=4)
-    logger.info(f"Best hyperparameters saved to: {output_file}")
+    try:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w') as f:
+            json.dump(best_params, f, indent=4)
+        logger.info(f"Best hyperparameters saved to: {output_file}")
+    except Exception as e:
+        logger.error(f"Failed to save hyperparameters to {output_file}: {str(e)}")
+
+    # Save the best model
+    best_model = tuner.get_best_models(num_models=1)[0]
+    model_file = f"models/{model_task}.keras"
+    try:
+        os.makedirs(os.path.dirname(model_file), exist_ok=True)
+        best_model.save(model_file)
+        logger.info(f"Best model saved to: {model_file}")
+    except Exception as e:
+        logger.error(f"Failed to save model to {model_file}: {str(e)}")
 
     return best_params
