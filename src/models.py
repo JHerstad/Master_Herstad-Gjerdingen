@@ -156,7 +156,7 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
 
 def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
     """
-    Trains a CNN model for RUL classification using tuned hyperparameters from config.
+    Trains a CNN model for RUL classification using tuned hyperparameters from config, with Functional API.
 
     Args:
         config (Config): Configuration object with tuned hyperparameters.
@@ -165,47 +165,59 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     Returns:
         Tuple: (trained model, training history).
     """
-    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train
-    # Build model using tuned parameters from config
-    model = Sequential([
-        Input(shape=input_shape),
-        Conv1D(
-            filters=config.conv1_filters,
-            kernel_size=config.conv1_kernel_size,
-            activation='relu',
-            kernel_regularizer=l2(config.l2_reg)
-        ),
-        BatchNormalization(),
-        MaxPooling1D(pool_size=2),
-        Conv1D(
-            filters=config.conv2_filters,
-            kernel_size=config.conv2_kernel_size,
-            activation='relu',
-            kernel_regularizer=l2(config.l2_reg)
-        ),
-        BatchNormalization(),
-        MaxPooling1D(pool_size=2),
-        Conv1D(
-            filters=config.conv3_filters,
-            kernel_size=config.conv3_kernel_size,
-            activation='relu',
-            kernel_regularizer=l2(config.l2_reg)
-        ),
-        BatchNormalization(),
-        MaxPooling1D(pool_size=2),
-        Flatten(),
-        Dense(
-            units=config.cnn_dense_units,
-            activation='relu',
-            kernel_regularizer=l2(config.l2_reg)
-        ),
-        Dropout(config.cnn_dropout_rate),
-        Dense(7, activation='softmax')
-    ])
+    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train (e.g., (120, 1))
+    
+    # Define the model using Functional API
+    input_layer = Input(shape=input_shape)
+    
+    # First Conv1D block
+    x = Conv1D(
+        filters=config.conv1_filters,
+        kernel_size=config.conv1_kernel_size,
+        activation='relu',
+        kernel_regularizer=l2(config.l2_reg)
+    )(input_layer)
+    x = BatchNormalization()(x)
+    x = MaxPooling1D(pool_size=2)(x)
+    
+    # Second Conv1D block
+    x = Conv1D(
+        filters=config.conv2_filters,
+        kernel_size=config.conv2_kernel_size,
+        activation='relu',
+        kernel_regularizer=l2(config.l2_reg)
+    )(x)
+    x = BatchNormalization()(x)
+    x = MaxPooling1D(pool_size=2)(x)
+    
+    # Third Conv1D block
+    x = Conv1D(
+        filters=config.conv3_filters,
+        kernel_size=config.conv3_kernel_size,
+        activation='relu',
+        kernel_regularizer=l2(config.l2_reg)
+    )(x)
+    x = BatchNormalization()(x)
+    x = MaxPooling1D(pool_size=2)(x)
+    
+    # Flatten and Dense layers
+    x = Flatten()(x)
+    x = Dense(
+        units=config.cnn_dense_units,
+        activation='relu',
+        kernel_regularizer=l2(config.l2_reg)
+    )(x)
+    x = Dropout(rate=config.cnn_dropout_rate)(x)
+    output_layer = Dense(7, activation='softmax')(x)
+    
+    # Create the model
+    model = Model(inputs=input_layer, outputs=output_layer)
+    
+    # Compile the model
     optimizer = Adam(learning_rate=config.learning_rate)
     model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
     logger.info("CNN model built with tuned config: %s", str(config))
-
+    
     # Define callbacks
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
@@ -216,7 +228,7 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
             verbose=1
         )
     ]
-
+    
     # Train the model
     history = model.fit(
         X_train, y_train,
@@ -226,12 +238,13 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
         verbose=1,
         callbacks=callbacks
     )
-
+    
+    # Save the final model
     final_model_path = os.path.join("experiments", "models", f"cnn_classification_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
     os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
     model.save(final_model_path)
     logger.info(f"Final CNN model saved to {final_model_path}")
-
+    
     return model, history.history
 
 
