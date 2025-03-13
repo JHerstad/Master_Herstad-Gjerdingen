@@ -12,8 +12,7 @@ def calculate_stability_ratio(values_orig, values_perturbed, input_orig, input_p
     n_perturbations = values_perturbed.shape[0]
     value_diffs = np.zeros(n_perturbations)
     for i in range(n_perturbations):
-        value_diffs[i] = np.linalg.norm(values_orig - values_perturbed[i])
-    
+        value_diffs[i] = np.linalg.norm(values_orig - values_perturbed[i])  # Works for multi-output
     print("Input diffs:", input_diffs[:5])
     print("Value diffs:", value_diffs[:5])
     input_diffs[input_diffs == 0] = 1e-10
@@ -22,50 +21,37 @@ def calculate_stability_ratio(values_orig, values_perturbed, input_orig, input_p
     return ratios
 
 def get_representation_model(model, layer_name=None):
-    """
-    Create a model that outputs the hidden states from a specified layer using the original model's structure.
-    
-    Parameters:
-    - model: Trained Keras model (e.g., LSTM).
-    - layer_name: Name of the layer to extract representations from (default: last LSTM layer).
-    
-    Returns:
-    - A Keras Model object that outputs representations.
-    """
     if layer_name is None:
         for layer in model.layers[::-1]:
-            if "lstm" in layer.name.lower():
+            if "conv1d" in layer.name.lower() or "lstm" in layer.name.lower():
                 layer_name = layer.name
                 break
         if layer_name is None:
-            raise ValueError("No LSTM layer found in the model.")
+            raise ValueError("No Conv1D or LSTM layer found in the model.")
     
-    # Verify layer exists
     if layer_name not in [layer.name for layer in model.layers]:
         raise ValueError(f"Layer '{layer_name}' not found in model. Available layers: {[layer.name for layer in model.layers]}")
     
-    # Get the layer's output directly from the original model
-    layer_output = model.get_layer(layer_name).output
-    
-    # Create a new model from the original input to the desired layer's output
-    return Model(inputs=model.input, outputs=layer_output)
+    return Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
 
 def calculate_relative_input_stability(model, X_background, test, 
                                       n_perturbations=20, noise_scale=0.1, nsamples=200, runs=1):
     def predict_wrapper(X):
-        return model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)
+        return model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)  # Works for both CNN and LSTM
     
     explainer = shap.KernelExplainer(predict_wrapper, X_background)
     shap_values_orig = explainer.shap_values(test, nsamples=nsamples, silent=True)
-    if isinstance(shap_values_orig, list):
-        shap_values_orig = shap_values_orig[0]
+    if isinstance(shap_values_orig, list):  # Multi-output case (e.g., 7 classes)
+        shap_values_orig = np.array(shap_values_orig).transpose(1, 2, 0)  # (1, n_features, n_outputs)
+    else:
+        shap_values_orig = shap_values_orig  # Single output (regression)
     
     all_ratios = []
     for _ in range(runs):
         X_perturbed = np.array([perturbation_function(test, noise_scale) for _ in range(n_perturbations)])
         X_perturbed_2d = X_perturbed.reshape(n_perturbations, -1)
         shap_values_perturbed = np.array([
-            explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)[0] 
+            np.array(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)).transpose(1, 2, 0)
             if isinstance(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True), list)
             else explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)
             for i in range(n_perturbations)
@@ -99,7 +85,7 @@ def calculate_relative_representation_stability(model, test,
 def calculate_relative_output_stability(model, test, 
                                        n_perturbations=20, noise_scale=0.1, runs=1):
     test_3d = test.reshape(-1, test.shape[1], 1)
-    output_orig = model.predict(test_3d, verbose=0)
+    output_orig = model.predict(test_3d, verbose=0)  # (1, 7) for CNN
     
     all_ratios = []
     for _ in range(runs):
@@ -107,7 +93,7 @@ def calculate_relative_output_stability(model, test,
         X_perturbed_2d = X_perturbed.reshape(n_perturbations, -1)
         X_perturbed_3d = X_perturbed.reshape(n_perturbations, -1, 1)
         output_perturbed = np.array([model.predict(X_perturbed_3d[i:i+1], verbose=0) 
-                                   for i in range(n_perturbations)])
+                                   for i in range(n_perturbations)])  # (n_perturbations, 7)
         ratios = calculate_stability_ratio(output_orig, output_perturbed, test, X_perturbed_2d)
         all_ratios.extend(ratios)
     
