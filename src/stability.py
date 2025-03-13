@@ -51,7 +51,7 @@ def get_representation_model(model, layer_name=None):
     return Model(inputs=model.input, outputs=layer_output)
 
 def calculate_relative_input_stability(model, X_background, test, 
-                                      n_perturbations=20, noise_scale=0.1, nsamples=1000, runs=1):
+                                      n_perturbations=20, noise_scale=0.1, nsamples=200, runs=1):
     def predict_wrapper(X):
         return model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)
     
