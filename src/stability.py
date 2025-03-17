@@ -1,142 +1,143 @@
 import numpy as np
-from sklearn.metrics import pairwise_distances
 import shap
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input
+from typing import Callable, Tuple, Optional
 
-def perturbation_function(x, noise_scale=0.1):
-    return x + np.random.normal(0, noise_scale, size=x.shape)
-
-def calculate_stability_ratio(x, x_prime, ex, ex_prime, p=2, epsilon_min=1e-8):
-    # Compute the percent change in explanation (numerator)
-    percent_change_ex = np.linalg.norm(x=((ex_prime - ex) / (ex + epsilon_min)), ord=p)
-
-    # Compute the normalized input difference (denominator)
-    input_difference = np.linalg.norm(x=((x_prime - x) / (x + epsilon_min)), ord=p)
-
-    # Ensure denominator is not too small
-    denominator = max(input_difference, epsilon_min)
-
-    # Compute RIS
-    ris = percent_change_ex / denominator
-
-    return ris
-
-def get_representation_model(model, layer_name=None):
-    if layer_name is None:
-        for layer in model.layers[::-1]:
-            if "conv1d" in layer.name.lower() or "lstm" in layer.name.lower():
-                layer_name = layer.name
-                break
-        if layer_name is None:
-            raise ValueError("No Conv1D or LSTM layer found in the model.")
-    
-    if layer_name not in [layer.name for layer in model.layers]:
-        raise ValueError(f"Layer '{layer_name}' not found in model. Available layers: {[layer.name for layer in model.layers]}")
-    
-    return Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
-
-def calculate_relative_input_stability(model, X_background, test, 
-                                      n_perturbations=20, noise_scale=0.1, nsamples=200, runs=1):
-    def predict_wrapper(X):
-        return model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)  # Works for both CNN and LSTM
-    
-    explainer = shap.KernelExplainer(predict_wrapper, X_background)
-    shap_values_orig = explainer.shap_values(test, nsamples=nsamples, silent=True)
-    if isinstance(shap_values_orig, list):  # Multi-output case (e.g., classification)
-        shap_values_orig = np.array(shap_values_orig).transpose(1, 2, 0)  # (1, n_features, n_outputs)
-    else:
-        shap_values_orig = shap_values_orig  # Single output (regression)
-    
-    all_ratios = []
-    test_3d = test.reshape(-1, test.shape[1], 1)
-    y_orig = predict_wrapper(test)  # Original predictions
-    
-    for _ in range(runs):
-        X_perturbed = np.array([perturbation_function(test, noise_scale) for _ in range(n_perturbations)])
-        X_perturbed_2d = X_perturbed.reshape(n_perturbations, -1)
-        X_perturbed_3d = X_perturbed.reshape(n_perturbations, -1, 1)
-        y_perturbed = predict_wrapper(X_perturbed_2d)  # Predictions for perturbed inputs
+class StabilityMetrics:
+    def __init__(self, model: Callable, background_data: np.ndarray, n_perturbations: int = 5, 
+                 noise_scale: float = 0.01, p: int = 2, eps_min: float = 1e-2, eps_perturb: float = 0.2):
+        self.model = model
+        self.background_data = background_data
+        self.n_perturbations = n_perturbations
+        self.noise_scale = noise_scale
+        self.p = p
+        self.eps_min = eps_min
+        self.eps_perturb = eps_perturb
         
-        # Label consistency check, ensuring 1D mask
-        if y_orig.shape[-1] > 1:  # Classification
-            mask = np.argmax(y_perturbed, axis=-1) == np.argmax(y_orig, axis=-1)
-        else:  # Regression
-            mask = np.abs(y_perturbed - y_orig).flatten() < 0.05  # Flatten to 1D
-        
-        if not np.any(mask):  # Skip if no perturbations maintain the same label
-            continue
-        
-        # Compute SHAP values for valid perturbed inputs
-        shap_values_perturbed = np.array([
-            np.array(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)).transpose(1, 2, 0)
-            if isinstance(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True), list)
-            else explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)
-            for i in range(n_perturbations)
-        ])
-        
-        # Calculate stability ratios only for consistent predictions
-        ratios = calculate_stability_ratio(shap_values_orig, shap_values_perturbed[mask], test, X_perturbed_2d[mask])
-        all_ratios.extend(ratios)
-    
-    all_ratios = np.array(all_ratios)
-    if len(all_ratios) == 0:  # Handle case where no valid perturbations exist
-        return np.nan, np.nan
-    return np.max(all_ratios), np.mean(all_ratios)
+    def perturbation_function(self, x: np.ndarray) -> np.ndarray:
+        return x + np.random.normal(0, self.noise_scale, size=x.shape)
 
-def calculate_relative_representation_stability(model, test, 
-                                               n_perturbations=20, noise_scale=0.1, runs=1, 
-                                               layer_name=None):
-    test_3d = test.reshape(-1, test.shape[1], 1)
-    repr_model = get_representation_model(model, layer_name)
-    repr_orig = repr_model.predict(test_3d, verbose=0)
-    
-    all_ratios = []
-    for _ in range(runs):
-        X_perturbed = np.array([perturbation_function(test, noise_scale) for _ in range(n_perturbations)])
-        X_perturbed_2d = X_perturbed.reshape(n_perturbations, -1)
-        X_perturbed_3d = X_perturbed.reshape(n_perturbations, -1, 1)
-        repr_perturbed = np.array([repr_model.predict(X_perturbed_3d[i:i+1], verbose=0) 
-                                 for i in range(n_perturbations)])
-        ratios = calculate_stability_ratio(repr_orig, repr_perturbed, test, X_perturbed_2d)
-        all_ratios.extend(ratios)
-    
-    all_ratios = np.array(all_ratios)
-    return np.max(all_ratios), np.mean(all_ratios)
+    def predict_fn(self, X: np.ndarray) -> np.ndarray:
+        return self.model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)
 
-def calculate_relative_output_stability(model, X_background, test, n_perturbations=20, noise_scale=0.1, nsamples=200, runs=1):
-    predict_wrapper = lambda X: model.predict(X.reshape(-1, X.shape[1], 1), verbose=0)
-    explainer = shap.KernelExplainer(predict_wrapper, X_background)
-    shap_values_orig = explainer.shap_values(test, nsamples=nsamples, silent=True)
-    if isinstance(shap_values_orig, list):  # Multi-output case
-        shap_values_orig = np.array(shap_values_orig).transpose(1, 2, 0)
-    
-    test_3d = test.reshape(-1, test.shape[1], 1)
-    logits_orig = predict_wrapper(test)  # h(x)
-    
-    all_ratios = []
-    for _ in range(runs):
-        X_perturbed = np.array([perturbation_function(test, noise_scale) for _ in range(n_perturbations)])
-        X_perturbed_2d = X_perturbed.reshape(n_perturbations, -1)
-        logits_perturbed = predict_wrapper(X_perturbed_2d)  # h(x')
+    def compute_shap_values(self, x: np.ndarray, nsamples: int = 1000) -> np.ndarray:
+        """Compute SHAP values with debug info."""
+        explainer = shap.KernelExplainer(self.predict_fn, self.background_data)
+        shap_values = explainer.shap_values(x, nsamples=nsamples, silent=True)
+        shap_values = np.array(shap_values)
+        return shap_values
+
+    def get_predicted_class_shap(self, shap_values: np.ndarray, h_x: np.ndarray) -> np.ndarray:
+        """Extract SHAP values for the predicted class if multi-output."""
+        if shap_values.shape[2] > 1:  # Multi-class case (1, 120, 7)
+            y_x = np.argmax(h_x, axis=1)[0]
+            return shap_values[:, :, y_x]  # Shape (1, 120)
+        else:  # Regression case (1, 120, 1)
+            return np.squeeze(shap_values, axis=2)  # Shape (1, 120)
+
+    def compute_ris(self, x: np.ndarray, x_prime: np.ndarray, e_x: np.ndarray, 
+                    e_x_prime: np.ndarray, h_x: np.ndarray, h_x_prime: np.ndarray) -> Optional[float]:
+        x = np.array(x, dtype=np.float64)
+        x_prime = np.array(x_prime, dtype=np.float64)
+        h_x = np.array(h_x, dtype=np.float64)
+        h_x_prime = np.array(h_x_prime, dtype=np.float64)
+
+        # Perturbation constraint (optional for regression)
+        perturb_norm = np.linalg.norm(x - x_prime, ord=self.p)
+        if h_x.shape[1] > 1:  # Classification
+            if perturb_norm > self.eps_perturb:
+                print(f"Perturbation too large: {perturb_norm:.6f} > {self.eps_perturb}")
+                return None
+            y_x = np.argmax(h_x)
+            y_x_prime = np.argmax(h_x_prime)
+            if y_x != y_x_prime:
+                print(f"Class mismatch: y_x={y_x}, y_x_prime={y_x_prime}")
+                return None
         
-        # Label consistency check
-        mask = np.argmax(logits_perturbed, axis=-1) == np.argmax(logits_orig, axis=-1) if logits_orig.shape[-1] > 1 else np.abs(logits_perturbed - logits_orig) < 0.05
-        if not np.any(mask):
-            continue
+        e_x = self.get_predicted_class_shap(e_x, h_x)
+        e_x_prime = self.get_predicted_class_shap(e_x_prime, h_x_prime)
         
-        # Compute SHAP values for perturbed inputs
-        shap_values_perturbed = np.array([
-            np.array(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)).transpose(1, 2, 0)
-            if isinstance(explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True), list)
-            else explainer.shap_values(X_perturbed[i:i+1].reshape(1, -1), nsamples=nsamples, silent=True)
-            for i in range(n_perturbations)
-        ])
+        if e_x.shape != (1, 120) or e_x_prime.shape != (1, 120):
+            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 120).")
+
+        e_diff = e_x - e_x_prime
+        normalization_factor = np.max(np.abs(e_x)) or self.eps_min
+        relative_change = e_diff / normalization_factor
+        e_diff_norm = np.linalg.norm(relative_change, ord=self.p)
+
+        x_diff = (x - x_prime) / (x)  # Added eps_min to avoid division by zero
+        x_diff_norm = np.linalg.norm(x_diff, ord=self.p)
+
+        denominator = max(x_diff_norm, self.eps_min)
+        print(f"RIS: e_diff_norm: {e_diff_norm:.6f}, x_diff_norm: {x_diff_norm:.6f}, RIS: {e_diff_norm / denominator:.6f}")
+        return e_diff_norm / denominator
+
+    def compute_ros(self, e_x: np.ndarray, e_x_prime: np.ndarray, h_x: np.ndarray, 
+                    h_x_prime: np.ndarray) -> Optional[float]:
+        e_x = np.array(e_x, dtype=np.float64)
+        e_x_prime = np.array(e_x_prime, dtype=np.float64)
+        h_x = np.array(h_x, dtype=np.float64)
+        h_x_prime = np.array(h_x_prime, dtype=np.float64)
+
+        if h_x.shape[1] > 1:  # Classification
+            y_x = np.argmax(h_x)
+            y_x_prime = np.argmax(h_x_prime)
+            if y_x != y_x_prime:
+                print(f"Class mismatch: y_x={y_x}, y_x_prime={y_x_prime}")
+                return None
         
-        # Calculate ROS using modified stability ratio
-        ratios = calculate_stability_ratio(shap_values_orig, shap_values_perturbed[mask], 
-                                         logits_orig, logits_perturbed[mask])
-        all_ratios.extend(ratios)
-    
-    all_ratios = np.array(all_ratios)
-    return np.max(all_ratios) if len(all_ratios) > 0 else np.nan, np.mean(all_ratios) if len(all_ratios) > 0 else np.nan
+        e_x = self.get_predicted_class_shap(e_x, h_x)
+        e_x_prime = self.get_predicted_class_shap(e_x_prime, h_x_prime)
+
+        if e_x.shape != (1, 120) or e_x_prime.shape != (1, 120):
+            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 120).")
+        if h_x.shape != h_x_prime.shape:
+            raise ValueError("h_x and h_x_prime must have the same shape.")
+
+        e_diff = e_x - e_x_prime
+        normalization_factor = np.max(np.abs(e_x)) or self.eps_min
+        relative_change = e_diff / normalization_factor
+        e_diff_norm = np.linalg.norm(relative_change, ord=self.p)
+
+        h_diff = h_x - h_x_prime
+        h_diff_norm = np.linalg.norm(h_diff, ord=self.p)
+        denominator = max(h_diff_norm, self.eps_min)
+
+        print(f"ROS: e_diff_norm: {e_diff_norm:.6f}, h_diff_norm: {h_diff_norm:.6f}, ROS: {e_diff_norm / denominator:.6f}")
+        return e_diff_norm / denominator
+
+    def calculate_stability(self, x: np.ndarray, metric: str = "ris") -> Tuple[float, float]:
+        h_x = self.predict_fn(x)
+        e_x = self.compute_shap_values(x)
+        
+        stability_values = []
+        for _ in range(self.n_perturbations):
+            x_prime = self.perturbation_function(x)
+            h_x_prime = self.predict_fn(x_prime)
+            e_x_prime = self.compute_shap_values(x_prime)
+            
+            if metric == "ris":
+                stability = self.compute_ris(x, x_prime, e_x, e_x_prime, h_x, h_x_prime)
+            elif metric == "ros":
+                stability = self.compute_ros(e_x, e_x_prime, h_x, h_x_prime)
+            else:
+                raise ValueError("Metric must be 'ris' or 'ros'.")
+            
+            if stability is not None:
+                stability_values.append(stability)
+        
+        return (np.max(stability_values), np.mean(stability_values)) if stability_values else (None, None)
+
+def calculate_relative_input_stability(model: Callable, test_instance: np.ndarray, 
+                                       background_data: np.ndarray, noise_scale: float = 0.1, 
+                                       n_perturbations: int = 5) -> Tuple[float, float]:
+    stability = StabilityMetrics(model, background_data, n_perturbations, noise_scale)
+    return stability.calculate_stability(test_instance, "ris")
+
+def calculate_relative_output_stability(model: Callable, test_instance: np.ndarray, 
+                                       background_data: np.ndarray, noise_scale: float = 0.1, 
+                                       n_perturbations: int = 5) -> Tuple[float, float]:
+    stability = StabilityMetrics(model, background_data, n_perturbations, noise_scale)
+    return stability.calculate_stability(test_instance, "ros")
+
+if __name__ == "__main__":
+    pass
