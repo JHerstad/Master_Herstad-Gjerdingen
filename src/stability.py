@@ -5,7 +5,7 @@ from lime.lime_tabular import LimeTabularExplainer
 
 class StabilityMetrics:
     def __init__(self, model: Callable, background_data: np.ndarray, n_perturbations: int = 5, 
-                 noise_scale: float = 0.01, p: int = 2, eps_min: float = 1e-2, eps_perturb: float = 0.2, 
+                 noise_scale: float = 0.01, p: int = 2, eps_min: float = 1e-3, 
                  mode: str = "regression"):
         self.model = model
         self.background_data = background_data
@@ -13,7 +13,6 @@ class StabilityMetrics:
         self.noise_scale = noise_scale
         self.p = p
         self.eps_min = eps_min
-        self.eps_perturb = eps_perturb
         self.mode = mode  # "regression" or "classification"
         # Initialize LIME explainer
         self.lime_explainer = LimeTabularExplainer(
@@ -82,12 +81,7 @@ class StabilityMetrics:
         h_x = np.array(h_x, dtype=np.float64)
         h_x_prime = np.array(h_x_prime, dtype=np.float64)
 
-        # Perturbation constraint (optional for regression)
-        perturb_norm = np.linalg.norm(x - x_prime, ord=self.p)
         if h_x.shape[1] > 1:  # Classification
-            if perturb_norm > self.eps_perturb:
-                print(f"Perturbation too large: {perturb_norm:.6f} > {self.eps_perturb}")
-                return None
             y_x = np.argmax(h_x)
             y_x_prime = np.argmax(h_x_prime)
             if y_x != y_x_prime:
