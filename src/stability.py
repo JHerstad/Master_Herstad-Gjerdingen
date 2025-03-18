@@ -99,7 +99,7 @@ class StabilityMetrics:
         relative_change = e_diff / normalization_factor
         e_diff_norm = np.linalg.norm(relative_change, ord=self.p)
 
-        x_diff = (x - x_prime) / (x)  # Unchanged as per your request
+        x_diff = (x - x_prime) / (x)
         x_diff_norm = np.linalg.norm(x_diff, ord=self.p)
 
         denominator = max(x_diff_norm, self.eps_min)
@@ -145,7 +145,7 @@ class StabilityMetrics:
         if explainer_type == "shap":
             e_x = self.compute_shap_values(x)
         elif explainer_type == "lime":
-            e_x = self.compute_lime_values(x, h_x)  # Pass h_x for classification
+            e_x = self.compute_lime_values(x, h_x) 
         else:
             raise ValueError("explainer_type must be 'shap' or 'lime'")
         
