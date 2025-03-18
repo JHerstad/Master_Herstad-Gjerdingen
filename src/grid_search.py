@@ -8,16 +8,15 @@ src/evaluation.py, and src/visualization.py. Saves best hyperparameters in JSON.
 import os
 import json
 import keras_tuner as kt
-from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
-    LSTM, Dense, Dropout, Masking, Conv1D, BatchNormalization, MaxPooling1D, Flatten, Input
+    LSTM, Dense, Dropout, Conv1D, BatchNormalization, MaxPooling1D, Flatten, Input
 )
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
 import tensorflow as tf
 import logging
 from src.models import load_preprocessed_data
-from config.defaults import Config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
