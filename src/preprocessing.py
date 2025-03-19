@@ -15,6 +15,8 @@ from sklearn.model_selection import train_test_split
 from config.defaults import Config  # Assuming Config is defined in config/defaults.py
 import os
 import json
+import pickle
+from sklearn.preprocessing import RobustScaler
 
 
 def compute_eol_and_rul(row: pd.Series, fraction: float) -> pd.Series:
@@ -151,6 +153,8 @@ def preprocess_aachen_dataset(config: Config) -> None:
     classification = config.classification
     eol_capacity = config.eol_capacity
     seq_len = config.seq_len
+    bins = config.bins
+    labels = config.labels
     
     # Load dataset into a pandas DataFrame using mat4py. Path from Config
     data_loader = mat4py.loadmat(config.data_path)
@@ -165,6 +169,8 @@ def preprocess_aachen_dataset(config: Config) -> None:
 
     # Define RUL bins and labels for classification using config values
     label_mapping = None
+
+
     if classification:
         if len(bins) - 1 != len(labels):
             raise ValueError(f"Number of bins ({len(bins)}) must match number of labels + 1 ({len(labels)})")
@@ -267,3 +273,188 @@ def preprocess_aachen_dataset(config: Config) -> None:
     }
     with open(os.path.join(output_dir, f"metadata_{model_type}_{eol_str}.json"), "w") as f:
         json.dump(metadata, f, indent=4)
+
+
+import os
+import json
+import datetime
+import numpy as np
+import pandas as pd
+import pickle
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+from config.defaults import Config  # Assuming Config is defined in config/defaults.py
+
+
+def clean_outliers_fixed_limits(seq, min_cap=0.5, max_cap=1.2):
+    """
+    Replaces extreme capacity values with NaN and imputes missing values.
+    """
+    seq = np.array(seq).squeeze()
+    
+    # Replace values outside limits with NaN
+    seq[(seq < min_cap) | (seq > max_cap)] = np.nan
+
+    # Impute missing values using linear interpolation + forward/backward fill
+    seq = pd.Series(seq).interpolate(method='linear', limit_direction='both').fillna(method='bfill').fillna(method='ffill').values
+    return seq
+
+import os
+import json
+import datetime
+import numpy as np
+import pandas as pd
+import pickle
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+from config.defaults import Config  # Assuming Config is defined in config/defaults.py
+
+
+def clean_outliers_fixed_limits(seq, min_cap=0.5, max_cap=1.2):
+    """
+    Replaces extreme capacity values with NaN and imputes missing values.
+    """
+    seq = np.array(seq).squeeze()
+    
+    # Replace values outside limits with NaN
+    seq[(seq < min_cap) | (seq > max_cap)] = np.nan
+
+    # Impute missing values using linear interpolation + forward/backward fill
+    seq = pd.Series(seq).interpolate(method='linear', limit_direction='both').fillna(method='bfill').fillna(method='ffill').values
+    return seq
+
+
+def preprocess_mit_stanford_dataset(config: Config) -> None:
+    """
+    Loads and preprocesses the MIT-Stanford dataset for RUL classification or regression,
+    supporting both classification (CNN) and regression (LSTM) tasks with fixed-length sequences.
+    Saves preprocessed data arrays and metadata to data/MIT_Stanford/processed/ for reproducibility.
+
+    Args:
+        config (Config): Configuration object with preprocessing parameters.
+    """
+
+    # -------- Define Paths --------
+    raw_data_dir = "data/MIT_Stanford/raw/"
+    output_dir = "data/MIT_Stanford/processed/"
+    os.makedirs(output_dir, exist_ok=True)  # Ensure output directory exists
+
+    # -------- Load MIT-Stanford Dataset --------
+    batch_files = ["batch1.pkl", "batch2.pkl", "batch3.pkl"]
+    bat_dict = {}
+
+    for batch_file in batch_files:
+        batch_path = os.path.join(raw_data_dir, batch_file)
+        if os.path.exists(batch_path):
+            with open(batch_path, "rb") as f:
+                batch_data = pickle.load(f)
+                bat_dict.update(batch_data)
+        else:
+            print(f"Warning: {batch_path} not found!")
+
+    # Remove non-usable cells
+    for cell in ['b1c8', 'b1c10', 'b1c12', 'b1c13', 'b1c22', 'b3c37', 'b3c2', 'b3c23', 'b3c32', 'b3c42', 'b3c43']:
+        bat_dict.pop(cell, None)
+
+    # -------- Configuration --------
+    classification = config.classification
+    eol_capacity = config.eol_capacity
+    seq_len = config.seq_len
+
+    # Parameters for expanding windows
+    max_cycles = 120  
+    threshold_fraction = eol_capacity  
+    step_size = 5  
+    min_cap, max_cap = 0.5, 1.2  
+
+    # -------- Step 1: Generate Expanding Windows and Compute RUL --------
+    exp_windows, exp_ruls, exp_cell_ids = [], [], []
+
+    for cell_key, cell_data in bat_dict.items():
+        cycles = np.array(cell_data['summary']['cycle'])
+        capacities = np.array(cell_data['summary']['QD'])
+
+        # Apply outlier cleaning
+        capacities = clean_outliers_fixed_limits(capacities, min_cap, max_cap)
+
+        # Compute EOL
+        initial_capacity = capacities[0]
+        threshold = threshold_fraction * initial_capacity
+        eol_cycle = cycles[np.argmax(capacities < threshold)] if np.any(capacities < threshold) else cycles[-1]
+
+        # Expanding window sampling
+        for end_idx in range(step_size, len(cycles), step_size):
+            window_cycles = cycles[:end_idx + 1]
+            window_caps = capacities[:end_idx + 1]
+
+            # Keep only last max_cycles (truncate front)
+            if len(window_caps) > max_cycles:
+                window_caps = window_caps[-max_cycles:]
+                window_cycles = window_cycles[-max_cycles:]
+
+            rul = eol_cycle - window_cycles[-1]
+            if rul < 0:
+                continue  # Exclude invalid RULs
+
+            exp_windows.append(window_caps)
+            exp_ruls.append(rul)
+            exp_cell_ids.append(cell_key)
+
+    # Convert to numpy arrays
+    X_expanding = np.array([np.pad(seq, (max_cycles - len(seq), 0), 'edge') for seq in exp_windows])
+    y_expanding = np.array(exp_ruls)
+
+    # -------- Step 2: Normalize Input Features --------
+    scaler_X = RobustScaler()
+    X_exp_norm = scaler_X.fit_transform(X_expanding.reshape(-1, 1)).reshape(X_expanding.shape[0], max_cycles, 1)
+
+    # -------- Step 3: Train/Test Split by Battery Cells --------
+    unique_cells = np.unique(exp_cell_ids)
+    train_cells, test_cells = train_test_split(unique_cells, test_size=config.test_cell_count / len(unique_cells), random_state=config.random_state)
+
+    train_idx = [i for i, cell in enumerate(exp_cell_ids) if cell in train_cells]
+    test_idx = [i for i, cell in enumerate(exp_cell_ids) if cell in test_cells]
+
+    X_train, y_train = X_exp_norm[train_idx], y_expanding[train_idx]
+    X_test, y_test = X_exp_norm[test_idx], y_expanding[test_idx]
+
+    # Further split train into train/validation
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=config.val_split_ratio, random_state=config.random_state)
+
+    # -------- Step 4: Normalize RUL Values --------
+    scaler_y = MinMaxScaler(feature_range=(0, 1))
+    y_train_scaled = scaler_y.fit_transform(y_train.reshape(-1, 1)).ravel()
+    y_val_scaled = scaler_y.transform(y_val.reshape(-1, 1)).ravel()
+    y_test_scaled = scaler_y.transform(y_test.reshape(-1, 1)).ravel()
+
+    # -------- Step 5: Handle Classification Labels --------
+    if classification:
+        bins = np.linspace(0, np.max(y_expanding), num=5)
+        labels = np.arange(len(bins) - 1)
+
+        y_train_scaled = to_categorical(pd.cut(y_train_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
+        y_val_scaled = to_categorical(pd.cut(y_val_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
+        y_test_scaled = to_categorical(pd.cut(y_test_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
+
+    # -------- Step 6: Save Processed Data --------
+    eol_str = f"eol{int(eol_capacity * 100)}"
+    model_type = "classification" if classification else "regression"
+
+    for key, data in zip(["X_train", "X_val", "X_test", "y_train", "y_val", "y_test"],
+                          [X_train, X_val, X_test, y_train_scaled, y_val_scaled, y_test_scaled]):
+        np.save(os.path.join(output_dir, f"{key}_{model_type}_{eol_str}.npy"), data)
+
+    # Save metadata
+    metadata = {
+        "y_max": float(np.max(y_expanding)),
+        "seq_len": int(X_train.shape[1]),
+        "eol_capacity": float(eol_capacity),
+        "classification": classification,
+        "timestamp": datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    }
+    with open(os.path.join(output_dir, f"metadata_{model_type}_{eol_str}.json"), "w") as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"Preprocessing complete! Data saved in {output_dir}")
