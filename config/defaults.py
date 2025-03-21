@@ -36,7 +36,7 @@ class Config:
     data_path: str = os.path.join("data", "raw", "Degradation_Prediction_Dataset_ISEA.mat")
     
     # Preprocessing
-    eol_capacity: float = 0.65  # Default EOL at 65% capacity
+    eol_capacity: float = 0.80  # Default EOL at 65% capacity
     test_cell_count: int = 3    # Default number of test cells
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression
@@ -53,6 +53,7 @@ class Config:
     tuning_epochs: int = 50     # Default epochs for tuning
     tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")
 
+    # To be deleted - Start
     # LSTM model
     lstm_units: int = 32
     lstm_dropout_rate: float = 0.2
@@ -72,6 +73,7 @@ class Config:
     l2_reg: float = 0.001
     cnn_dense_units: int = 64
     cnn_dropout_rate: float = 0.2
+    # To be deleted - End 
 
     def load_best_params(self, model_task: str = "lstm_regression", eol_capacity: float = None) -> None:
         """

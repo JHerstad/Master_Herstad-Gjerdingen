@@ -345,8 +345,10 @@ def preprocess_mit_stanford_dataset(config: Config) -> None:
     batch_files = ["batch1.pkl", "batch2.pkl", "batch3.pkl"]
     bat_dict = {}
 
+
+
     for batch_file in batch_files:
-        batch_path = os.path.join(raw_data_dir, batch_file)
+        batch_path = os.path.join("data", "MIT_Stanford", "raw", batch_file)
         if os.path.exists(batch_path):
             with open(batch_path, "rb") as f:
                 batch_data = pickle.load(f)

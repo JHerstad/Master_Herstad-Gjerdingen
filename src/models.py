@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Add thesis_experiment/ to sys.path for imports (if needed when run standalone)
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
-def load_preprocessed_data(model_task: str, eol_capacity: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
+def load_preprocessed_data(model_task: str, eol_capacity: float, dataset= "Aachen") -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
     Loads preprocessed data and metadata from data/processed/ based on model_task and EOL capacity.
 
@@ -45,7 +45,8 @@ def load_preprocessed_data(model_task: str, eol_capacity: float) -> Tuple[np.nda
         Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, metadata),
                where metadata includes y_max, seq_len, eol_capacity, classification, and timestamp.
     """
-    output_dir = "data/processed/"
+    output_dir = f"data/{dataset}/processed/"
+
     eol_str = f"eol{int(eol_capacity*100)}"
 
     # Extract task type from model_task for file naming consistency with preprocessing

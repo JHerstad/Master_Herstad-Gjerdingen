@@ -126,7 +126,7 @@ def build_cnn_model(hp, input_shape):
     model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
-def run_hyperparameter_search(config, model_task: str = "lstm_regression"):
+def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regression"):
     """
     Runs hyperparameter tuning using Keras Tuner with Bayesian Optimization.
 
@@ -143,7 +143,7 @@ def run_hyperparameter_search(config, model_task: str = "lstm_regression"):
     # Load preprocessed data
     logger.info(f"Loading preprocessed data for hyperparameter tuning with {model_task}...")
     X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
-        model_task, config.eol_capacity
+        model_task, config.eol_capacity, dataset=dataset
     )
     input_shape = (metadata["seq_len"], 1)
     logger.info(f"Input shape: {input_shape}, X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
@@ -203,12 +203,13 @@ def run_hyperparameter_search(config, model_task: str = "lstm_regression"):
 
     # Save the best model
     best_model = tuner.get_best_models(num_models=1)[0]
-    model_file = f"models/{model_task}.keras"
+    model_file = f"models/{dataset}_{model_task}.keras"
     try:
         os.makedirs(os.path.dirname(model_file), exist_ok=True)
         best_model.save(model_file)
         logger.info(f"Best model saved to: {model_file}")
     except Exception as e:
         logger.error(f"Failed to save model to {model_file}: {str(e)}")
+
 
     return best_params
