@@ -44,8 +44,16 @@ class Config:
     seq_len: int = 120          # Default sequence length
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
+
+    # Aachen
     bins: list = field(default_factory=lambda: [0, 200, 300, 400, 500, 600, 700, float("inf")])
     labels: list = field(default_factory=lambda: ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"])
+
+    # MIT_Stanford (Comment out for Aachen)
+    bins: list = field(default_factory=lambda: [0, 200, 400, 600, float("inf")])
+    labels: list = field(default_factory=lambda: ["0-200", "200-400", "400-600", "600+"])
+
+    n_bins = 4
 
     # Grid Search
     batch_size: int = 32        # Default batch size for training/tuning

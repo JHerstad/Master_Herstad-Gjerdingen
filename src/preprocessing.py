@@ -425,22 +425,43 @@ def preprocess_mit_stanford_dataset(config: Config) -> None:
     # Further split train into train/validation
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=config.val_split_ratio, random_state=config.random_state)
 
-    # -------- Step 4: Normalize RUL Values --------
-    scaler_y = MinMaxScaler(feature_range=(0, 1))
-    y_train_scaled = scaler_y.fit_transform(y_train.reshape(-1, 1)).ravel()
-    y_val_scaled = scaler_y.transform(y_val.reshape(-1, 1)).ravel()
-    y_test_scaled = scaler_y.transform(y_test.reshape(-1, 1)).ravel()
 
-    # -------- Step 5: Handle Classification Labels --------
+    # -------- Step 4a: Handle Classification Labels --------
     if classification:
-        bins = np.linspace(0, np.max(y_expanding), num=5)
-        labels = np.arange(len(bins) - 1)
+        bins = config.bins
+        labels = config.labels
 
-        y_train_scaled = to_categorical(pd.cut(y_train_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
-        y_val_scaled = to_categorical(pd.cut(y_val_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
-        y_test_scaled = to_categorical(pd.cut(y_test_scaled, bins=bins, labels=labels, include_lowest=True).astype(int), num_classes=len(labels))
+        # Use bins and labels from the configuration
+        if len(bins) - 1 != len(labels):
+            raise ValueError(f"Number of bins ({len(bins)}) must match number of labels + 1 ({len(labels)})")
+        
+        # Bin the values using pd.cut
+        cat_y_train = pd.cut(y_train, bins=bins, labels=labels, include_lowest=True)
+        cat_y_val = pd.cut(y_val, bins=bins, labels=labels, include_lowest=True)
+        cat_y_test = pd.cut(y_test, bins=bins, labels=labels, include_lowest=True)
+        
+        # Create a mapping from label strings to integer codes
+        label_mapping = {label: i for i, label in enumerate(labels)}
+        
+        # Map the categorical values to integers
+        y_train_int = cat_y_train.map(label_mapping).astype(int)
+        y_val_int = cat_y_val.map(label_mapping).astype(int)
+        y_test_int = cat_y_test.map(label_mapping).astype(int)
+        
+        # One-hot encode the integer labels
+        y_train_scaled = to_categorical(y_train_int, num_classes=len(labels))
+        y_val_scaled = to_categorical(y_val_int, num_classes=len(labels))
+        y_test_scaled = to_categorical(y_test_int, num_classes=len(labels))
 
-    # -------- Step 6: Save Processed Data --------
+    else:
+        # -------- Step 4b: Normalize RUL Values for regression --------
+        scaler_y = MinMaxScaler(feature_range=(0, 1))
+        y_train_scaled = scaler_y.fit_transform(y_train.reshape(-1, 1)).ravel()
+        y_val_scaled = scaler_y.transform(y_val.reshape(-1, 1)).ravel()
+        y_test_scaled = scaler_y.transform(y_test.reshape(-1, 1)).ravel()
+
+
+    # -------- Step 5: Save Processed Data --------
     eol_str = f"eol{int(eol_capacity * 100)}"
     model_type = "classification" if classification else "regression"
 

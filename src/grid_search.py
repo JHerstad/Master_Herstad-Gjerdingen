@@ -17,6 +17,8 @@ from tensorflow.keras.regularizers import l2
 import tensorflow as tf
 import logging
 from src.models import load_preprocessed_data
+from config.defaults import Config
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -117,7 +119,7 @@ def build_cnn_model(hp, input_shape):
         kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
     )(x)
     x = Dropout(rate=hp.Float('cnn_dropout_rate', min_value=0.3, max_value=0.7, step=0.1))(x)
-    output_layer = Dense(7, activation='softmax')(x)
+    output_layer = Dense(Config.n_bins, activation='softmax')(x)
 
     model = Model(inputs=input_layer, outputs=output_layer)
     optimizer = Adam(

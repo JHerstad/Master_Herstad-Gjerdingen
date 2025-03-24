@@ -61,7 +61,7 @@ def load_preprocessed_data(model_task: str, eol_capacity: float, dataset= "Aache
     pattern = f"X_train_{task_type}_{eol_str}.npy"
     data_files = [f for f in os.listdir(output_dir) if f.startswith(pattern) and f.endswith(".npy")]
     if not data_files:
-        raise FileNotFoundError(f"No preprocessed data found for {task_type} with EOL {eol_capacity}")
+        raise FileNotFoundError(f"No preprocessed data found for {task_type} with EOL {eol_capacity}.")
 
     # Load data arrays
     X_train = np.load(os.path.join(output_dir, f"X_train_{task_type}_{eol_str}.npy"))
@@ -209,7 +209,7 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
         kernel_regularizer=l2(config.l2_reg)
     )(x)
     x = Dropout(rate=config.cnn_dropout_rate)(x)
-    output_layer = Dense(7, activation='softmax')(x)
+    output_layer = Dense(config.n_bins, activation='softmax')(x)
     
     # Create the model
     model = Model(inputs=input_layer, outputs=output_layer)
