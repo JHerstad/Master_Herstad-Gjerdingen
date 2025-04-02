@@ -33,7 +33,7 @@ class Config:
         labels (list): List of labels for RUL bins (e.g., ["0-200", "200-300", ...]).
     """
     project_name: str = "Experiment1"
-    data_path: str = os.path.join("data", "raw", "Degradation_Prediction_Dataset_ISEA.mat")
+    data_path: str = os.path.join("data", "Aachen", "raw", "Degradation_Prediction_Dataset_ISEA.mat")
     
     # Preprocessing
     eol_capacity: float = 0.80  # Default EOL at 65% capacity
@@ -41,7 +41,7 @@ class Config:
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression
     classification: bool = False # Default to regression (LSTM); True for classification (CNN)
-    seq_len: int = 120          # Default sequence length
+    seq_len: int = 20          # Default sequence length
     train_split_ratio: float = 0.8  # Default 80% of cells for training
     val_split_ratio: float = 0.2   # Default 20% of training cells for validation
 

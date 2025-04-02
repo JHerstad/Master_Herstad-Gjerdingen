@@ -191,15 +191,15 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     x = BatchNormalization()(x)
     x = MaxPooling1D(pool_size=2)(x)
     
-    # Third Conv1D block
-    x = Conv1D(
-        filters=config.conv3_filters,
-        kernel_size=config.conv3_kernel_size,
-        activation='relu',
-        kernel_regularizer=l2(config.l2_reg)
-    )(x)
-    x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    """    # Third Conv1D block
+        x = Conv1D(
+            filters=config.conv3_filters,
+            kernel_size=config.conv3_kernel_size,
+            activation='relu',
+            kernel_regularizer=l2(config.l2_reg)
+        )(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling1D(pool_size=2)(x)"""
     
     # Flatten and Dense layers
     x = Flatten()(x)

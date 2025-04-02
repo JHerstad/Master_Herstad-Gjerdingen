@@ -1,0 +1,10 @@
+{
+    "conv1_filters": 48,
+    "conv1_kernel_size": 5,
+    "l2_reg": 0.0005,
+    "conv2_filters": 48,
+    "conv2_kernel_size": 5,
+    "cnn_dense_units": 64,
+    "cnn_dropout_rate": 0.5,
+    "learning_rate": 0.001
+}

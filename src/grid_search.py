@@ -86,8 +86,8 @@ def build_cnn_model(hp, input_shape):
     """
     input_layer = Input(shape=input_shape)
     x = Conv1D(
-        filters=hp.Int('conv1_filters', min_value=16, max_value=64, step=16),
-        kernel_size=hp.Choice('conv1_kernel_size', values=[9, 11, 13]),
+        filters=hp.Int('conv1_filters', min_value=16, max_value=96, step=16),
+        kernel_size=hp.Choice('conv1_kernel_size', values=[3, 5, 7]),
         activation='relu',
         kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
     )(input_layer)
@@ -95,28 +95,28 @@ def build_cnn_model(hp, input_shape):
     x = MaxPooling1D(pool_size=2)(x)
 
     x = Conv1D(
-        filters=hp.Int('conv2_filters', min_value=32, max_value=128, step=32),
-        kernel_size=hp.Choice('conv2_kernel_size', values=[5, 7, 9]),
+        filters=hp.Int('conv2_filters', min_value=16, max_value=64, step=16),
+        kernel_size=hp.Choice('conv2_kernel_size', values=[1, 3, 5]),
         activation='relu',
         kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
     )(x)
     x = BatchNormalization()(x)
     x = MaxPooling1D(pool_size=2)(x)
 
-    x = Conv1D(
-        filters=hp.Int('conv3_filters', min_value=64, max_value=128, step=32),
-        kernel_size=hp.Choice('conv3_kernel_size', values=[3, 5]),
-        activation='relu',
-        kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
-    )(x)
-    x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    """    x = Conv1D(
+            filters=hp.Int('conv3_filters', min_value=64, max_value=128, step=32),
+            kernel_size=hp.Choice('conv3_kernel_size', values=[3, 5]),
+            activation='relu',
+            kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
+        )(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling1D(pool_size=2)(x)"""
 
     x = Flatten()(x)
     x = Dense(
-        units=hp.Int('cnn_dense_units', min_value=64, max_value=256, step=64),
+        units=hp.Int('cnn_dense_units', min_value=32, max_value=128, step=32),
         activation='relu',
-        kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.001, 0.0005, 0.0001]))
+        kernel_regularizer=l2(hp.Choice('l2_reg', values=[0.01, 0.001, 0.0005]))
     )(x)
     x = Dropout(rate=hp.Float('cnn_dropout_rate', min_value=0.3, max_value=0.7, step=0.1))(x)
     output_layer = Dense(Config.n_bins, activation='softmax')(x)

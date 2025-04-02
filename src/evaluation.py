@@ -118,7 +118,7 @@ def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray,
 
     return test_loss, test_accuracy, y_pred
 
-def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None) -> None:
+def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None, title: str = "True vs. Predicted Values") -> None:
     """
     Plots a 'True vs. Predicted' scatter plot for regression outputs.
 
@@ -138,7 +138,7 @@ def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = Non
     plt.plot([min_val, max_val], [min_val, max_val], 'r--')
     plt.xlabel("True Value")
     plt.ylabel("Predicted Value")
-    plt.title("True vs. Predicted Values (Regression)")
+    plt.title(title)
     plt.show()
 
 def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list) -> None:
