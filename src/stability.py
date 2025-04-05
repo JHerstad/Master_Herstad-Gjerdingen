@@ -1,7 +1,6 @@
 import numpy as np
 import shap
-from typing import Callable, Tuple, Optional
-from lime.lime_tabular import LimeTabularExplainer
+
 
 class StabilityMetrics:
     def __init__(self, model: Callable, background_data: np.ndarray, n_perturbations: int = 5, 
@@ -17,7 +16,7 @@ class StabilityMetrics:
         # Initialize LIME explainer
         self.lime_explainer = LimeTabularExplainer(
             training_data=self.background_data,
-            feature_names=[f"timestep_{i}" for i in range(120)],
+            feature_names=[f"timestep_{i}" for i in range(20)], 
             mode=self.mode,
             discretize_continuous=False,
             class_names=[f"class_{i}" for i in range(7)] if mode == "classification" else None
@@ -36,9 +35,9 @@ class StabilityMetrics:
         shap_values = np.array(shap_values)
         return shap_values
     
-    def compute_lime_values(self, x: np.ndarray, h_x: np.ndarray = None, num_features: int = 120) -> np.ndarray:
-        """Compute LIME explanation and convert to (1, 120) array for predicted class."""
-        x_flat = x.flatten()  # Shape (120,)
+    def compute_lime_values(self, x: np.ndarray, h_x: np.ndarray = None, num_features: int = 20) -> np.ndarray:
+        """Compute LIME explanation and convert to (1, 20) array for predicted class."""
+        x_flat = x.flatten()  # Shape (20,)
         if self.mode == "regression":
             explanation = self.lime_explainer.explain_instance(
                 x_flat,
@@ -58,7 +57,7 @@ class StabilityMetrics:
             )
             lime_list = explanation.as_list(label=predicted_class)  # Get explanation for predicted class
 
-        lime_values = np.zeros((1, 120), dtype=np.float64)
+        lime_values = np.zeros((1, 20), dtype=np.float64)
         for feature_name, weight in lime_list:
             timestep_idx = int(feature_name.split('_')[1])  # Extract index from "timestep_X"
             lime_values[0, timestep_idx] = weight
@@ -66,13 +65,13 @@ class StabilityMetrics:
     
     def process_explanation_values(self, explain_values: np.ndarray, h_x: np.ndarray) -> np.ndarray:
         """Process explanation values for the predicted class if multi-output, handle 2D arrays."""
-        if explain_values.ndim == 3 and explain_values.shape[2] > 1:  # Multi-class SHAP (1, 120, 7)
+        if explain_values.ndim == 3 and explain_values.shape[2] > 1:  # Multi-class SHAP (1, 20, 7)
             y_x = np.argmax(h_x, axis=1)[0]
-            return explain_values[:, :, y_x]  # Shape (1, 120)
-        elif explain_values.ndim == 3:  # Regression SHAP (1, 120, 1)
-            return np.squeeze(explain_values, axis=2)  # Shape (1, 120)
-        else:  # LIME or already processed (1, 120)
-            return explain_values  # Shape (1, 120)
+            return explain_values[:, :, y_x]  # Shape (1, 20)
+        elif explain_values.ndim == 3:  # Regression SHAP (1, 20, 1)
+            return np.squeeze(explain_values, axis=2)  # Shape (1, 20)
+        else:  # LIME or already processed (1, 20)
+            return explain_values  # Shape (1, 20)
 
     def compute_ris(self, x: np.ndarray, x_prime: np.ndarray, e_x: np.ndarray, 
                     e_x_prime: np.ndarray, h_x: np.ndarray, h_x_prime: np.ndarray) -> Optional[float]:
@@ -91,8 +90,8 @@ class StabilityMetrics:
         e_x = self.process_explanation_values(e_x, h_x)
         e_x_prime = self.process_explanation_values(e_x_prime, h_x_prime)
         
-        if e_x.shape != (1, 120) or e_x_prime.shape != (1, 120):
-            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 120).")
+        if e_x.shape != (1, 20) or e_x_prime.shape != (1, 20):
+            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 20).")
 
         e_diff = e_x - e_x_prime
         normalization_factor = np.max(np.abs(e_x)) or self.eps_min
@@ -123,8 +122,8 @@ class StabilityMetrics:
         e_x = self.process_explanation_values(e_x, h_x)
         e_x_prime = self.process_explanation_values(e_x_prime, h_x_prime)
 
-        if e_x.shape != (1, 120) or e_x_prime.shape != (1, 120):
-            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 120).")
+        if e_x.shape != (1, 20) or e_x_prime.shape != (1, 20):
+            raise ValueError(f"e_x shape {e_x.shape} or e_x_prime shape {e_x_prime.shape} must be (1, 20).")
         if h_x.shape != h_x_prime.shape:
             raise ValueError("h_x and h_x_prime must have the same shape.")
 
