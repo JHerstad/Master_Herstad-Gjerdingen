@@ -34,9 +34,14 @@ class Config:
     """
     project_name: str = "Experiment1"
     data_path: str = os.path.join("data", "Aachen", "raw", "Degradation_Prediction_Dataset_ISEA.mat")
-    
+
+    # Mode
+    use_aachen: bool = True  # Default to Aachen dataset; set to False for MIT_Stanford
+    model_task: str = "lstm_regression"  # Default model task; can be "lstm_regression" or "cnn_classification"
+
+
     # Preprocessing
-    eol_capacity: float = 0.80  # Default EOL at 65% capacity
+    eol_capacity: float = 0.80  # Default EOL at 80% capacity
     test_cell_count: int = 3    # Default number of test cells
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression
@@ -73,17 +78,32 @@ class Config:
 
     # CNN model
     conv1_filters: int = 32
-    conv1_kernel_size: int = 11
+    conv1_kernel_size: int = 5
     conv2_filters: int = 64
-    conv2_kernel_size: int = 7
+    conv2_kernel_size: int = 3
     conv3_filters: int = 64
     conv3_kernel_size: int = 5
     l2_reg: float = 0.001
     cnn_dense_units: int = 64
-    cnn_dropout_rate: float = 0.2
-    # To be deleted - End 
+    cnn_dropout_rate: float = 0.5
+    # To be deleted - End
+    
+    # --- Grid Search Tuning Parameters for scikit-learn models ---
+    # Decision Tree Regressor Tuning Parameters
+    max_depth: any = None        # Candidate values: None, 3, 5, 10
+    min_samples_split: int = 2   # Candidate values: 2, 5, 10
+    min_samples_leaf: int = 1    # Candidate values: 1, 2, 4
+    
+    # Linear Regression Tuning Parameter
+    fit_intercept: bool = True   # Candidate values: True, False
+    
+    # Lasso Regression Tuning Parameters
+    alpha: float = 0.001         # Candidate values: 0.0001, 0.001, 0.01, 0.1, 1.0
+    max_iter: int = 1000         # Candidate values: 1000, 5000, 10000
+    tol: float = 0.001           # Candidate values: 0.0001, 0.001
+    selection: str = "cyclic"    # Candidate values: 'cyclic', 'random' 
 
-    def load_best_params(self, model_task: str = "lstm_regression", eol_capacity: float = None) -> None:
+    def load_best_params(self) -> None:
         """
         Load best hyperparameters from a tuning file and override defaults if available.
 
@@ -91,12 +111,16 @@ class Config:
             model_task (str): Type of model (e.g., "lstm_regression", "cnn_classification").
             eol_capacity (float, optional): EOL capacity to match the tuning file; defaults to self.eol_capacity.
         """
-        if eol_capacity is None:
-            eol_capacity = self.eol_capacity
+    
 
+        # Determine the subfolder based on the configuration
+        bottom_map_dir = "aachen" if self.use_aachen else "mit_stanford"
+
+        # Build the full path to the tuning file using the new folder structure.
         tuning_file = os.path.join(
             self.tuner_directory,
-            f"{self.project_name}_{model_task}_tuning_eol{int(eol_capacity*100)}_best_params.json"
+            bottom_map_dir,
+            f"{self.project_name}_{self.model_task}_tuning_eol{int(self.eol_capacity * 100)}_best_params.json"
         )
         
         if os.path.exists(tuning_file):
