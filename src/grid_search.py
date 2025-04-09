@@ -19,6 +19,10 @@ import logging
 from src.models import load_preprocessed_data
 from config.defaults import Config
 
+from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.linear_model import LinearRegression, Lasso
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -190,9 +194,95 @@ def build_cnn_model(hp, input_shape):
     return model
 
 
-def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regression"):
+def run_grid_search_models(config):
+    """
+    Runs grid search hyperparameter tuning for scikit-learn regression models
+    (Decision Tree, Linear Regression, Lasso Regression) based on config.model_task.
+    
+    This function loads preprocessed data (using config.eol_capacity and config.use_aachen),
+    flattens the training data, and then, based on the model_task specified in the config,
+    performs a grid search over the defined parameter grid. The best hyperparameters
+    are then saved to a JSON file in a subfolder based on the bottom map configuration.
+    
+    Args:
+        config (Config): Configuration object with the following relevant attributes:
+            - model_task: a string that should include 'dt' for Decision Tree,
+                          'lr' for Linear Regression, or 'lasso' for Lasso Regression.
+            - eol_capacity: float value for EOL capacity.
+            - use_aachen: bool to determine the dataset to load.
+            - tuner_directory: base directory for saving hyperparameter tuning results.
+            - project_name: name used for naming the output file.
+    
+    Returns:
+        dict: Best hyperparameters found for the specified model.
+    """
+    # Load preprocessed data using config parameters
+    X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+    
+    # Flatten the input for scikit-learn models
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+    
+    # Get the model task in lowercase
+    model_task = config.model_task.lower()
+    
+    best_params = None
+    if "dt" in model_task:
+        dt_model = DecisionTreeRegressor(random_state=42)
+        dt_param_grid = {
+            'max_depth': [None, 3, 5, 10],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 4]
+        }
+        grid_search = GridSearchCV(dt_model, dt_param_grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1)
+        grid_search.fit(X_train_flat, y_train)
+        best_params = grid_search.best_params_
+        logger.info(f"Best Decision Tree parameters: {best_params}")
+    elif "lr" in model_task:
+        lr_model = LinearRegression()
+        lr_param_grid = {'fit_intercept': [True, False]}
+        grid_search = GridSearchCV(lr_model, lr_param_grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1)
+        grid_search.fit(X_train_flat, y_train)
+        best_params = grid_search.best_params_
+        logger.info(f"Best Linear Regression parameters: {best_params}")
+    elif "lasso" in model_task:
+        lasso_model = Lasso()
+        lasso_param_grid = {
+            'alpha': [0.0001, 0.001, 0.01, 0.1, 1.0],
+            'max_iter': [1000, 5000, 10000],
+            'tol': [0.0001, 0.001],
+            'selection': ['cyclic', 'random']
+        }
+        grid_search = GridSearchCV(lasso_model, lasso_param_grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1)
+        grid_search.fit(X_train_flat, y_train)
+        best_params = grid_search.best_params_
+        logger.info(f"Best Lasso Regression parameters: {best_params}")
+    else:
+        raise ValueError("Unsupported model_task for grid search. Must contain 'dt', 'lr', or 'lasso'.")
+
+    # Save best hyperparameters to JSON in the appropriate folder
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    tuner_directory = os.path.join(config.tuner_directory, bottom_map_dir)
+    os.makedirs(tuner_directory, exist_ok=True)
+    output_file = os.path.join(
+        tuner_directory,
+        f"{config.project_name}_{config.model_task}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
+    )
+    try:
+        with open(output_file, 'w') as f:
+            json.dump(best_params, f, indent=4)
+        logger.info(f"Best hyperparameters saved to: {output_file}")
+    except Exception as e:
+        logger.error(f"Failed to save hyperparameters to {output_file}: {str(e)}")
+    
+    return best_params
+
+
+def run_hyperparameter_search(config: Config):
     """
     Runs hyperparameter tuning using Keras Tuner with Bayesian Optimization.
+    Saves best hyperparameters and the best model into a subfolder determined by config.use_aachen.
 
     Args:
         config (Config): Configuration object with model and tuning parameters.
@@ -202,29 +292,36 @@ def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regressio
     Returns:
         dict: Best hyperparameters found during the search.
     """
-    logger.info(f"Running hyperparameter search for: {model_task}")
+    logger.info(f"Running hyperparameter search for: {config.model_task}")
 
     # Load preprocessed data
-    logger.info(f"Loading preprocessed data for hyperparameter tuning with {model_task}...")
+    logger.info(f"Loading preprocessed data for hyperparameter tuning with {config.model_task}...")
     X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
-        model_task, config.eol_capacity, dataset=dataset
+        config.model_task, config.eol_capacity, config.use_aachen
     )
+    
     input_shape = (metadata["seq_len"], 1)
     logger.info(f"Input shape: {input_shape}, X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
 
     # Select model-building function and objective
-    if "lstm" in model_task:
-        if "regression" not in model_task:
-            logger.warning(f"{model_task} specified, but LSTM typically used for regression.")
+    if "lstm" in config.model_task:
+        if "regression" not in config.model_task:
+            logger.warning(f"{config.model_task} specified, but LSTM typically used for regression.")
         build_fn = lambda hp: build_lstm_model(hp, input_shape)
         objective = "val_loss"  # Regression uses loss (MSE)
-    elif "cnn" in model_task:
-        if "classification" not in model_task:
-            logger.warning(f"{model_task} specified, but CNN typically used for classification.")
+    elif "cnn" in config.model_task:
+        if "classification" not in config.model_task:
+            logger.warning(f"{config.model_task} specified, but CNN typically used for classification.")
         build_fn = lambda hp: build_cnn_model(hp, input_shape)
         objective = "val_loss"  # Use val_loss for consistency (or val_accuracy for classification)
     else:
-        raise ValueError(f"Unsupported model_task: {model_task}. Must include 'lstm' or 'cnn'.")
+        raise ValueError(f"Unsupported model_task: {config.model_task}. Must include 'lstm' or 'cnn'.")
+
+    # Determine bottom map subfolder based on configuration flag
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    # Set tuner directory to include the bottom_map subfolder
+    tuner_directory = os.path.join(config.tuner_directory, bottom_map_dir)
+    os.makedirs(tuner_directory, exist_ok=True)
 
     # Set up the Keras Tuner
     tuner = kt.BayesianOptimization(
@@ -232,8 +329,8 @@ def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regressio
         objective=objective,
         max_trials=config.max_trials,
         executions_per_trial=1,
-        directory=config.tuner_directory,
-        project_name=f"{config.project_name}_{model_task}_tuning_eol{int(config.eol_capacity*100)}"
+        directory=tuner_directory,
+        project_name=f"{config.project_name}_{config.model_task}_tuning_eol{int(config.eol_capacity*100)}"
     )
 
     # Perform hyperparameter search
@@ -252,10 +349,10 @@ def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regressio
     best_params = best_hps.values
     logger.info(f"Best hyperparameters found: {best_params}")
 
-    # Save best hyperparameters to JSON
+    # Save best hyperparameters to JSON in the appropriate folder
     output_file = os.path.join(
-        config.tuner_directory,
-        f"{config.project_name}_{model_task}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
+        tuner_directory,
+        f"{config.project_name}_{config.model_task}_tuning_eol{int(config.eol_capacity*100)}_best_params.json"
     )
     try:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -265,15 +362,19 @@ def run_hyperparameter_search(config, dataset, model_task: str = "lstm_regressio
     except Exception as e:
         logger.error(f"Failed to save hyperparameters to {output_file}: {str(e)}")
 
-    # Save the best model
-    best_model = tuner.get_best_models(num_models=1)[0]
-    model_file = f"models/{dataset}_{model_task}.keras"
-    try:
-        os.makedirs(os.path.dirname(model_file), exist_ok=True)
-        best_model.save(model_file)
-        logger.info(f"Best model saved to: {model_file}")
-    except Exception as e:
-        logger.error(f"Failed to save model to {model_file}: {str(e)}")
 
 
     return best_params
+
+
+# Save the best model in a corresponding folder within experiments/models
+"""
+best_model = tuner.get_best_models(num_models=1)[0]
+model_file = os.path.join("experiments", "models", bottom_map_dir, f"{dataset}_{model_task}.keras")
+try:
+    os.makedirs(os.path.dirname(model_file), exist_ok=True)
+    best_model.save(model_file)
+    logger.info(f"Best model saved to: {model_file}")
+except Exception as e:
+    logger.error(f"Failed to save model to {model_file}: {str(e)}")"
+"""

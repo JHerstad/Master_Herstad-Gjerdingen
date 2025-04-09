@@ -25,6 +25,11 @@ from config.defaults import Config
 import datetime
 import json
 import fnmatch
+from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.linear_model import LinearRegression, Lasso
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Add thesis_experiment/ to sys.path for imports (if needed when run standalone)
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
-def load_preprocessed_data(model_task: str, eol_capacity: float, dataset= "Aachen") -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
+def load_preprocessed_data(model_task: str, eol_capacity: float, use_aachen: bool) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
     Loads preprocessed data and metadata from data/processed/ based on model_task and EOL capacity.
 
@@ -45,6 +50,8 @@ def load_preprocessed_data(model_task: str, eol_capacity: float, dataset= "Aache
         Tuple: (X_train, X_val, X_test, y_train, y_val, y_test, metadata),
                where metadata includes y_max, seq_len, eol_capacity, classification, and timestamp.
     """
+    # Choose dataset based on the use_aachen flag.
+    dataset = "Aachen" if use_aachen else "MIT_Stanford"
     output_dir = f"data/{dataset}/processed/"
 
     eol_str = f"eol{int(eol_capacity*100)}"
@@ -88,17 +95,24 @@ def load_preprocessed_data(model_task: str, eol_capacity: float, dataset= "Aache
     logger.info(f"Loaded preprocessed data and metadata for {model_task} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
-def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
+def train_lstm_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
     """
     Trains an LSTM model for RUL regression using tuned hyperparameters from config with Functional API.
-
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
+    
     Args:
-        config (Config): Configuration object with tuned hyperparameters.
-        X_train, y_train, X_val, y_val (np.ndarray): Training and validation data.
-
+        config (Config): Configuration object with tuned hyperparameters and data parameters including
+                         model_task, eol_capacity, use_aachen, lstm_units, lstm_dropout_rate, lstm_dense_units,
+                         learning_rate, clipnorm, patience, epochs, and batch_size.
+    
     Returns:
         Tuple: (trained model, training history).
     """
+    # Load preprocessed data using config parameters.
+    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+
     # Derive input shape from X_train
     input_shape = (X_train.shape[1], X_train.shape[2])  # (timesteps, features), e.g., (120, 1)
     logger.info(f"Input shape derived from X_train: {input_shape}")
@@ -125,12 +139,21 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
     model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
     logger.info("LSTM model built with tuned config: %s", str(config))
 
-    # Define callbacks
+    # Determine the subfolder based on configuration (Aachen or MIT_Stanford)
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
+
+    # Define callbacks and file paths using the folder structure from above
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    best_model_path = os.path.join(
+        base_model_dir,
+        f"lstm_regression_eol{int(config.eol_capacity * 100)}_{timestamp}_best.keras"
+    )
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
         ModelCheckpoint(
-            os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{timestamp}_best.keras"),
+            best_model_path,
             monitor='val_loss',
             save_best_only=True,
             verbose=1
@@ -143,19 +166,20 @@ def train_lstm_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X
         validation_data=(X_val, y_val),
         epochs=config.epochs,
         batch_size=config.batch_size,
-        verbose=1,
         callbacks=callbacks
     )
 
     # Save the final model
-    final_model_path = os.path.join("experiments", "models", f"lstm_regression_eol{int(config.eol_capacity*100)}_{timestamp}_final.keras")
-    os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
+    final_model_path = os.path.join(
+        base_model_dir,
+        f"lstm_regression_eol{int(config.eol_capacity * 100)}_{timestamp}_final.keras"
+    )
     model.save(final_model_path)
     logger.info(f"Final LSTM model saved to {final_model_path}")
 
     return model, history.history
 
-def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Tuple[tf.keras.Model, Dict]:
+def train_cnn_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
     """
     Trains a CNN model for RUL classification using tuned hyperparameters from config, with Functional API.
 
@@ -166,7 +190,13 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     Returns:
         Tuple: (trained model, training history).
     """
-    input_shape = (X_train.shape[1], X_train.shape[2])  # Derive input_shape from X_train (e.g., (120, 1))
+    # Load preprocessed data using config parameters.
+    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+
+    # Derive input shape from X_train
+    input_shape = (X_train.shape[1], X_train.shape[2])
     
     # Define the model using Functional API
     input_layer = Input(shape=input_shape)
@@ -219,11 +249,21 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
     logger.info("CNN model built with tuned config: %s", str(config))
     
-    # Define callbacks
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
+    
+    # Define callbacks with a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    checkpoint_path = os.path.join(
+        base_model_dir,
+        f"cnn_classification_eol{int(config.eol_capacity*100)}_{timestamp}_best.keras"
+    )
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=config.patience, restore_best_weights=True),
         ModelCheckpoint(
-            os.path.join("experiments", "models", f"cnn_classification_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_best.keras"),
+            checkpoint_path,
             monitor='val_loss',
             save_best_only=True,
             verbose=1
@@ -236,12 +276,14 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
         validation_data=(X_val, y_val),
         epochs=config.epochs,
         batch_size=config.batch_size,
-        verbose=1,
         callbacks=callbacks
     )
     
-    # Save the final model
-    final_model_path = os.path.join("experiments", "models", f"cnn_classification_eol{int(config.eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_final.keras")
+    # Save the final model in the appropriate subfolder
+    final_model_path = os.path.join(
+        base_model_dir,
+        f"cnn_classification_eol{int(config.eol_capacity*100)}_{timestamp}_final.keras"
+    )
     os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
     model.save(final_model_path)
     logger.info(f"Final CNN model saved to {final_model_path}")
@@ -249,19 +291,151 @@ def train_cnn_model(config: Config, X_train: np.ndarray, y_train: np.ndarray, X_
     return model, history.history
 
 
+def train_dt_model(config: Config) -> Tuple[DecisionTreeRegressor, Dict]:
+    """
+    Trains and evaluates the Decision Tree Regressor on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
+    The model is trained using the default tuning parameters provided in the config and evaluated on the test set.
+    
+    Args:
+        config (Config): Configuration object with data and model parameters. It should include:
+                         - max_depth, min_samples_split, min_samples_leaf for the Decision Tree.
+    
+    Returns:
+        Tuple: (trained DecisionTreeRegressor model, dictionary of evaluation metrics).
+    """
+    # Load preprocessed data
+    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+    
+    # Flatten training and test data (scikit-learn expects 2D arrays)
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+    X_test_flat = X_test.reshape(X_test.shape[0], -1)
+    
+    # Create and train the Decision Tree Regressor using default parameters from config
+    dt_regressor = DecisionTreeRegressor(
+        random_state=42,
+        max_depth=config.max_depth,
+        min_samples_split=config.min_samples_split,
+        min_samples_leaf=config.min_samples_leaf
+    )
+    dt_regressor.fit(X_train_flat, y_train)
+    
+    # Make predictions and compute evaluation metrics
+    y_test_pred = dt_regressor.predict(X_test_flat)
+    mse = mean_squared_error(y_test, y_test_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_test_pred)
+    mae = mean_absolute_error(y_test, y_test_pred)
+    
+    print("\nDecision Tree Final Test Metrics:")
+    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
+    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
+    return dt_regressor, metrics
+
+
+def train_lr_model(config: Config) -> Tuple[LinearRegression, Dict]:
+    """
+    Trains and evaluates the Linear Regression model on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
+    The model is trained using the default tuning parameter (fit_intercept) provided in the config and evaluated on the test set.
+    
+    Args:
+        config (Config): Configuration object with data and model parameters. It should include:
+                         - fit_intercept for the Linear Regression.
+    
+    Returns:
+        Tuple: (trained LinearRegression model, dictionary of evaluation metrics).
+    """
+    # Load preprocessed data
+    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+    
+    # Flatten training and test data
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+    X_test_flat = X_test.reshape(X_test.shape[0], -1)
+    
+    # Create and train the Linear Regression model using default parameters from config
+    lr_model = LinearRegression(fit_intercept=config.fit_intercept)
+    lr_model.fit(X_train_flat, y_train)
+    
+    # Make predictions and compute evaluation metrics
+    y_test_pred = lr_model.predict(X_test_flat)
+    mse = mean_squared_error(y_test, y_test_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_test_pred)
+    mae = mean_absolute_error(y_test, y_test_pred)
+    
+    print("\nLinear Regression Final Test Metrics:")
+    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
+    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
+    return lr_model, metrics
+
+
+def train_lasso_model(config: Config) -> Tuple[Lasso, Dict]:
+    """
+    Trains and evaluates the Lasso Regression model on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
+    The model is trained using the default tuning parameters (alpha, max_iter, tol, selection) provided in the config 
+    and evaluated on the test set.
+    
+    Args:
+        config (Config): Configuration object with data and model parameters. It should include:
+                         - alpha, max_iter, tol, selection for the Lasso Regression.
+    
+    Returns:
+        Tuple: (trained Lasso model, dictionary of evaluation metrics).
+    """
+    # Load preprocessed data
+    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+    
+    # Flatten training and test data
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+    X_test_flat = X_test.reshape(X_test.shape[0], -1)
+    
+    # Create and train the Lasso Regression model using default parameters from config
+    lasso_model = Lasso(
+        alpha=config.alpha,
+        max_iter=config.max_iter,
+        tol=config.tol,
+        selection=config.selection
+    )
+    lasso_model.fit(X_train_flat, y_train)
+    
+    # Make predictions and compute evaluation metrics
+    y_test_pred = lasso_model.predict(X_test_flat)
+    mse = mean_squared_error(y_test, y_test_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_test_pred)
+    mae = mean_absolute_error(y_test, y_test_pred)
+    
+    print("\nLasso Regression Final Test Metrics:")
+    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
+    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
+    return lasso_model, metrics
+
+
+
 def load_saved_model(model_task: str, config: Config) -> Optional[tf.keras.Model]:
     """
     Loads a previously saved best model (LSTM or CNN) for the specified model_task and EOL capacity.
+    The folder used for the search is determined by the config.use_aachen flag: if True, the model is 
+    looked for in the 'aachen' folder; otherwise, in the 'mit_stanford' folder.
 
     Args:
         model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
-        eol_capacity (float): EOL capacity fraction (e.g., 0.65 for EOL65).
-        config (Config): Configuration object with model parameters.
+        config (Config): Configuration object with model parameters including eol_capacity, seq_len, and use_aachen.
 
     Returns:
         Optional[tf.keras.Model]: Loaded model if successful, None otherwise.
     """
-    model_dir = os.path.join("experiments", "models")
+    # Determine the folder based on the configuration flag.
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    model_dir = os.path.join("experiments", "models", bottom_map_dir)
     os.makedirs(model_dir, exist_ok=True)
 
     eol_capacity = config.eol_capacity
@@ -282,7 +456,7 @@ def load_saved_model(model_task: str, config: Config) -> Optional[tf.keras.Model
 
     best_files = [f for f in all_files if fnmatch.fnmatch(f, pattern_best)]
     if not best_files:
-        logger.info(f"No saved best {model_name} model found for {model_task} with EOL {eol_capacity}")
+        logger.info(f"No saved best {model_name} model found for {model_task} with EOL {eol_capacity} in folder {bottom_map_dir}")
         return None
 
     def extract_timestamp(filename: str) -> str:
