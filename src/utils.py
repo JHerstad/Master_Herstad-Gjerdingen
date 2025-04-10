@@ -15,7 +15,7 @@ import os
 import datetime
 from typing import NoReturn, Dict
 
-def plot_predictions_vs_actual(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoReturn:
+def plot_predictions_vs_actual(config:Config, y_test: np.ndarray, y_pred: np.ndarray, y_max: float, title: "str" = "Predicted vs Actual RUL") -> NoReturn:
     """
     Creates a scatterplot comparing actual vs. predicted Remaining Useful Life (RUL) values,
     rescaled to their original range for better interpretability.
@@ -35,6 +35,10 @@ def plot_predictions_vs_actual(y_test: np.ndarray, y_pred: np.ndarray, y_max: fl
         - Uses matplotlib for plotting, with a red dashed line representing perfect predictions.
         - Closes the plot after saving to free memory, suitable for batch processing in thesis experiments.
     """
+    # Set the font to Times New Roman globally for this plot
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
+
     # Rescale the normalized values to their original RUL range using y_max
     y_test_rescaled = y_test * y_max
     y_pred_rescaled = y_pred.flatten() * y_max
@@ -44,18 +48,23 @@ def plot_predictions_vs_actual(y_test: np.ndarray, y_pred: np.ndarray, y_max: fl
     plt.scatter(y_test_rescaled, y_pred_rescaled, alpha=0.7)
     plt.plot([y_test_rescaled.min(), y_test_rescaled.max()], [y_test_rescaled.min(), y_test_rescaled.max()], 
              'r--', label='Perfect Prediction')
-    plt.title("Predicted vs Actual RUL")
-    plt.xlabel("Actual RUL")
-    plt.ylabel("Predicted RUL")
-    plt.legend()
+    plt.title(title, fontsize=16)
+    plt.xlabel("Actual RUL", fontsize=14)
+    plt.ylabel("Predicted RUL", fontsize=14)
+    plt.tick_params(axis='both', labelsize=12)
+    plt.legend(fontsize=12)
     plt.grid()
-    
-    # Save the plot with versioning based on EOL capacity and timestamp
-    output_dir = os.path.join("experiments", "results")
+
+    # Determine the subfolder based on config.use_aachen
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    output_dir = os.path.join("experiments", "results", bottom_map_dir)
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"lstm_predictions_eol{int(Config().eol_capacity*100)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    plt.savefig(os.path.join(output_dir, filename))
-    plt.close()
+
+    # Build filename using config.model_task and config.eol_capacity along with a timestamp
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{config.model_task}_predictions_eol{int(config.eol_capacity * 100)}_{timestamp}.png"
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
+    plt.show()
 
 
 def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoReturn:

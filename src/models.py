@@ -29,6 +29,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression, Lasso
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import joblib
 
 
 # Configure logging for professional tracking
@@ -291,27 +292,27 @@ def train_cnn_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
     return model, history.history
 
 
-def train_dt_model(config: Config) -> Tuple[DecisionTreeRegressor, Dict]:
+def train_dt_model(config: Config) -> DecisionTreeRegressor:
     """
-    Trains and evaluates the Decision Tree Regressor on the preprocessed data.
-    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
-    The model is trained using the default tuning parameters provided in the config and evaluated on the test set.
+    Trains the Decision Tree Regressor on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
+    and config.use_aachen. The model is trained using the default tuning parameters provided in the config,
+    the trained model is saved using joblib, and then returned.
     
     Args:
         config (Config): Configuration object with data and model parameters. It should include:
-                         - max_depth, min_samples_split, min_samples_leaf for the Decision Tree.
+                         - max_depth, min_samples_split, and min_samples_leaf for the Decision Tree.
     
     Returns:
-        Tuple: (trained DecisionTreeRegressor model, dictionary of evaluation metrics).
+        DecisionTreeRegressor: The trained Decision Tree Regressor model.
     """
     # Load preprocessed data
-    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
-    # Flatten training and test data (scikit-learn expects 2D arrays)
+    # Flatten training data (scikit-learn expects 2D arrays)
     X_train_flat = X_train.reshape(X_train.shape[0], -1)
-    X_test_flat = X_test.reshape(X_test.shape[0], -1)
     
     # Create and train the Decision Tree Regressor using default parameters from config
     dt_regressor = DecisionTreeRegressor(
@@ -322,80 +323,89 @@ def train_dt_model(config: Config) -> Tuple[DecisionTreeRegressor, Dict]:
     )
     dt_regressor.fit(X_train_flat, y_train)
     
-    # Make predictions and compute evaluation metrics
-    y_test_pred = dt_regressor.predict(X_test_flat)
-    mse = mean_squared_error(y_test, y_test_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_test_pred)
-    mae = mean_absolute_error(y_test, y_test_pred)
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
+
+    # Generate a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Construct the filename with a .pkl extension and save the model using joblib
+    model_file = os.path.join(
+        base_model_dir,
+        f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_{timestamp}_best.pkl"
+    )
+    joblib.dump(dt_regressor, model_file)
     
-    print("\nDecision Tree Final Test Metrics:")
-    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
-    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
-    return dt_regressor, metrics
+    return dt_regressor
 
 
-def train_lr_model(config: Config) -> Tuple[LinearRegression, Dict]:
+def train_lr_model(config: Config) -> LinearRegression:
     """
-    Trains and evaluates the Linear Regression model on the preprocessed data.
-    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
-    The model is trained using the default tuning parameter (fit_intercept) provided in the config and evaluated on the test set.
+    Trains the Linear Regression model on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
+    and config.use_aachen. The model is trained using the default tuning parameter (fit_intercept)
+    provided in config, the trained model is saved using joblib, and then returned.
     
     Args:
         config (Config): Configuration object with data and model parameters. It should include:
                          - fit_intercept for the Linear Regression.
     
     Returns:
-        Tuple: (trained LinearRegression model, dictionary of evaluation metrics).
+        LinearRegression: The trained Linear Regression model.
     """
     # Load preprocessed data
-    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+    X_train, _, X_test, y_train, _, y_test, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
-    # Flatten training and test data
+    # Flatten training data
     X_train_flat = X_train.reshape(X_train.shape[0], -1)
-    X_test_flat = X_test.reshape(X_test.shape[0], -1)
     
     # Create and train the Linear Regression model using default parameters from config
     lr_model = LinearRegression(fit_intercept=config.fit_intercept)
     lr_model.fit(X_train_flat, y_train)
     
-    # Make predictions and compute evaluation metrics
-    y_test_pred = lr_model.predict(X_test_flat)
-    mse = mean_squared_error(y_test, y_test_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_test_pred)
-    mae = mean_absolute_error(y_test, y_test_pred)
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
     
-    print("\nLinear Regression Final Test Metrics:")
-    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
-    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
-    return lr_model, metrics
+    # Generate a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Construct the filename with a .pkl extension and save the model using joblib
+    model_file = os.path.join(
+        base_model_dir,
+        f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_{timestamp}_best.pkl"
+    )
+    joblib.dump(lr_model, model_file)
+    
+    return lr_model
 
 
-def train_lasso_model(config: Config) -> Tuple[Lasso, Dict]:
+def train_lasso_model(config: Config) -> Lasso:
     """
-    Trains and evaluates the Lasso Regression model on the preprocessed data.
-    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
-    The model is trained using the default tuning parameters (alpha, max_iter, tol, selection) provided in the config 
-    and evaluated on the test set.
+    Trains the Lasso Regression model on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
+    and config.use_aachen. The model is trained using the default tuning parameters (alpha, max_iter, tol, selection)
+    provided in config, the trained model is saved using joblib, and then returned.
     
     Args:
         config (Config): Configuration object with data and model parameters. It should include:
                          - alpha, max_iter, tol, selection for the Lasso Regression.
     
     Returns:
-        Tuple: (trained Lasso model, dictionary of evaluation metrics).
+        Lasso: The trained Lasso Regression model.
     """
     # Load preprocessed data
-    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+    X_train, _, X_test, y_train, _, y_test, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
-    # Flatten training and test data
+    # Flatten training data
     X_train_flat = X_train.reshape(X_train.shape[0], -1)
-    X_test_flat = X_test.reshape(X_test.shape[0], -1)
     
     # Create and train the Lasso Regression model using default parameters from config
     lasso_model = Lasso(
@@ -406,77 +416,76 @@ def train_lasso_model(config: Config) -> Tuple[Lasso, Dict]:
     )
     lasso_model.fit(X_train_flat, y_train)
     
-    # Make predictions and compute evaluation metrics
-    y_test_pred = lasso_model.predict(X_test_flat)
-    mse = mean_squared_error(y_test, y_test_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_test_pred)
-    mae = mean_absolute_error(y_test, y_test_pred)
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
     
-    print("\nLasso Regression Final Test Metrics:")
-    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}, MAE: {mae:.4f}")
-    metrics = {"MSE": mse, "RMSE": rmse, "R2": r2, "MAE": mae}
-    return lasso_model, metrics
+    # Generate a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Construct the filename with a .pkl extension and save the model using joblib
+    model_file = os.path.join(
+        base_model_dir,
+        f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_{timestamp}_best.pkl"
+    )
+    joblib.dump(lasso_model, model_file)
+    
+    return lasso_model
 
 
 
-def load_saved_model(model_task: str, config: Config) -> Optional[tf.keras.Model]:
+def load_saved_model(config: Config):
     """
-    Loads a previously saved best model (LSTM or CNN) for the specified model_task and EOL capacity.
+    Loads a previously saved best model for the specified model task and EOL capacity.
+    
     The folder used for the search is determined by the config.use_aachen flag: if True, the model is 
     looked for in the 'aachen' folder; otherwise, in the 'mit_stanford' folder.
-
+    
+    For Keras models (e.g., "lstm_regression" or "cnn_classification"), models are loaded using TensorFlow's load_model,
+    and files are expected to have the .keras extension.
+    
+    For scikit-learn models (e.g., "dt_regression", "lr_regression", "lasso_regression"), models are loaded
+    using joblib, and files are expected to have the .pkl extension.
+    
     Args:
-        model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
-        config (Config): Configuration object with model parameters including eol_capacity, seq_len, and use_aachen.
-
+        config (Config): Configuration object with model parameters including model_task, eol_capacity, seq_len,
+                         and use_aachen.
+    
     Returns:
-        Optional[tf.keras.Model]: Loaded model if successful, None otherwise.
+        Loaded model if successful; the type may be a tf.keras.Model for Keras models or a scikit-learn 
+                       estimator if a pkl file is loaded. Returns None if no matching model file is found.
     """
-    # Determine the folder based on the configuration flag.
+    
+    # Determine the appropriate folder based on config.use_aachen
     bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
     model_dir = os.path.join("experiments", "models", bottom_map_dir)
     os.makedirs(model_dir, exist_ok=True)
-
-    eol_capacity = config.eol_capacity
-    eol_str = f"eol{int(eol_capacity*100)}"
-
-    # Extract model and task type from model_task
-    if "lstm_regression" in model_task:
-        pattern_best = f"lstm_regression_{eol_str}_*_best.keras"
-        model_name = "LSTM"
-    elif "cnn_classification" in model_task:
-        pattern_best = f"cnn_classification_{eol_str}_*_best.keras"
-        model_name = "CNN"
+    
+    # Create an EOL string from the config
+    eol_str = f"eol{int(config.eol_capacity * 100)}"
+    
+    # Determine the file pattern and loader based on model_task
+    model_task_lower = config.model_task.lower()
+    if model_task_lower in ["lstm_regression", "cnn_classification"]:
+        pattern = f"{config.model_task}_{eol_str}_*_best.keras"
+        loader = tf.keras.models.load_model
     else:
-        raise ValueError(f"Unsupported model_task: {model_task}. Must be 'lstm_regression' or 'cnn_classification'.")
-
-    all_files = os.listdir(model_dir)
-    logger.debug(f"Files in {model_dir}: {all_files}")
-
-    best_files = [f for f in all_files if fnmatch.fnmatch(f, pattern_best)]
-    if not best_files:
-        logger.info(f"No saved best {model_name} model found for {model_task} with EOL {eol_capacity} in folder {bottom_map_dir}")
+        pattern = f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_*_best.pkl"
+        loader = joblib.load
+    
+    # List matching files and sort them (assuming filenames contain timestamps)
+    files = os.listdir(model_dir)
+    matching_files = [f for f in files if fnmatch.fnmatch(f, pattern)]
+    if not matching_files:
         return None
-
-    def extract_timestamp(filename: str) -> str:
-        import re
-        match = re.search(r'\d{8}_\d{6}', filename)
-        return match.group(0) if match else "00000000_000000"
-
-    best_files.sort(key=extract_timestamp, reverse=True)
-    latest_model = best_files[0]
-    model_path = os.path.join(model_dir, latest_model)
-
-    logger.debug(f"Attempting to load best {model_name} model from {model_path}")
+    matching_files.sort()  # Sort alphabetically; the latest timestamp should appear last.
+    latest_file = matching_files[-1]
+    model_path = os.path.join(model_dir, latest_file) # Select the latest file
+    
     try:
-        model = load_model(model_path)
-        logger.info(f"Loaded saved best {model_name} model from {model_path}")
-        input_shape = (config.seq_len, 1)
-        if model.input_shape[1:] != input_shape:
-            logger.warning(f"Input shape mismatch: saved best {model_name} model has {model.input_shape[1:]}, config expects {input_shape}")
-            return None
+        model = loader(model_path)
         return model
     except Exception as e:
-        logger.error(f"Failed to load saved best {model_name} model from {model_path}: {str(e)}")
+        print(f"Error loading model: {e}")
         return None
