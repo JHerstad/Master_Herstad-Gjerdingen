@@ -1,5 +1,5 @@
 {
-    "max_depth": 10,
-    "min_samples_leaf": 4,
-    "min_samples_split": 10
+    "max_depth": 4,
+    "min_samples_leaf": 1,
+    "min_samples_split": 2
 }

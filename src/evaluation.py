@@ -8,7 +8,7 @@ import numpy as np
 import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report, r2_score
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,68 +17,55 @@ logger = logging.getLogger(__name__)
 def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_max: float = None):
     """
     Evaluates a regression model on the test set. Works for:
-      - Keras models (i.e., tf.keras.Model) by calling model.evaluate().
+      - Keras models (i.e., tf.keras.Model) by calling model.evaluate() and model.predict().
       - Non-Keras models (e.g., scikit-learn) by manually computing MSE and MAE.
 
     Args:
         model: The regression model to evaluate.
-               If it's a Keras model, must have `evaluate()` and `predict()` methods.
-               Otherwise, must have a `predict()` method (scikit-learn style).
+               If it's a Keras model, it must have `evaluate()` and `predict()` methods.
+               Otherwise, it must have a `predict()` method (scikit-learn style).
         X_test (np.ndarray): Test features, shape depends on the model.
         y_test (np.ndarray): Test targets (normalized or unnormalized).
-        y_max (float, optional): Max RUL (or similar scaling factor) used for normalization.                 
-                If provided, predictions and targets are rescaled by multiplying with y_max.
+        y_max (float, optional): Maximum RUL (or similar scaling factor) used for normalization.
+                                 If provided, predictions and targets are rescaled by y_max.
 
     Returns:
-        (float, float): (test_loss, test_mae_rescaled) to mirror your LSTM approach,
-                        where test_loss is MSE (or the Keras loss) and test_mae_rescaled
-                        is MAE after optional rescaling.
-
-    Notes:
-        - For Keras models, we assume the loss is MSE and one metric is MAE.
-        - For other models, we compute MSE and MAE manually via scikit-learn.
-        - If y_max is provided, we rescale y_pred and y_test by y_max before computing final MAE.
-        - If y_max is None, no rescaling is done.
+        (float, float, float): A tuple containing:
+            - RMSE: Root Mean Squared Error,
+            - MAE: Mean Absolute Error (after optional rescaling),
+            - R^2: Coefficient of determination.
     """
 
-    # Detect if it's a Keras model by checking for an 'evaluate' method
+    # Detect if it's a Keras model by checking for an 'evaluate' method.
     is_keras_model = hasattr(model, "evaluate") and callable(model.evaluate)
 
     if is_keras_model:
-        # 1. Evaluate with Keras's built-in method
+        # Evaluate using Keras built-in methods.
         test_loss, test_mae = model.evaluate(X_test, y_test, verbose=1)
-        # 2. Predict
-        y_pred = model.predict(X_test, verbose=0).flatten()  # flatten in case it returns shape (n,1)
-
-        # In your LSTM code, 'test_loss' should be MSE if compiled with `loss='mse'`
-        # and 'test_mae' is the MAE metric. We'll keep those to stay consistent.
-
+        y_pred = model.predict(X_test, verbose=0).flatten()
     else:
-        # Assume a scikit-learn-like model with only `.predict()`
+        # Assume a scikit-learn-like model with a predict() method.
         y_pred = model.predict(X_test)
-
-        # Compute test_loss as MSE
         test_loss = mean_squared_error(y_test, y_pred)
-        # Compute test_mae as raw MAE
         test_mae = mean_absolute_error(y_test, y_pred)
 
-    # Optionally rescale predictions and targets if y_max is given
+    normal_rmse = np.sqrt(test_loss)
+    normal_mae = test_mae
+    normal_r2 = r2_score(y_test, y_pred)
+    
     if y_max is not None:
         y_test_rescaled = y_test * y_max
         y_pred_rescaled = y_pred * y_max
-        mae_rescaled = np.mean(np.abs(y_test_rescaled - y_pred_rescaled))
+        mse_rescaled = mean_squared_error(y_test_rescaled, y_pred_rescaled)
+        rescaled_rmse = np.sqrt(mse_rescaled)
+        rescaled_mae = mean_absolute_error(y_test_rescaled, y_pred_rescaled)
     else:
-        # If no rescaling, the "rescaled" MAE is just the raw MAE
-        mae_rescaled = test_mae
-
-    # Log the results
-    logger.info("Test Loss (MSE): %.4f", test_loss)
-    logger.info("Test MAE (rescaled): %.4f", mae_rescaled)
-
-    return test_loss, mae_rescaled
+        rescaled_rmse, rescaled_mae = np.nan, np.nan
+    
+    return normal_rmse, normal_mae, normal_r2, rescaled_rmse, rescaled_mae
 
 
-def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None) -> tuple:
+def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None, title: str = "Confusion Matrix"):
     """
     Evaluates a classification model on the test set.
 
@@ -106,17 +93,11 @@ def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray,
         test_accuracy = accuracy_score(y_test, y_pred)
         y_test_int = y_test  # Assume integer labels for non-Keras
 
-    if test_loss is not None:
-        logger.info("Test Loss (Crossentropy): %.4f", test_loss)
-    logger.info("Test Accuracy: %.4f", test_accuracy)
-
     if labels is not None:
-        plot_confusion_matrix(y_test_int, y_pred, labels)
-        logger.info("Classification Report:\n%s", classification_report(y_test_int, y_pred, target_names=labels))
+        plot_confusion_matrix(y_test_int, y_pred, labels, title)
+        print(classification_report(y_test_int, y_pred, target_names=labels))
     else:
         logger.warning("No labels provided; skipping confusion matrix and classification report.")
-
-    return test_loss, test_accuracy, y_pred
 
 def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None, title: str = "True vs. Predicted Values") -> None:
     """
@@ -141,7 +122,7 @@ def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = Non
     plt.title(title)
     plt.show()
 
-def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list) -> None:
+def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list, title: str = "Confusion Matrix") -> None:
     """
     Plots a confusion matrix for classification outputs.
 
@@ -151,9 +132,10 @@ def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list) 
         labels (list): List of class names.
     """
     conf_matrix = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(8, 6))
     sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
-    plt.title("Confusion Matrix (Classification)")
+    plt.xlabel("Predicted Label", fontsize=14)
+    plt.ylabel("True Label", fontsize=14)
+    plt.title(title, fontsize=16)
+    plt.tick_params(axis='both', labelsize=12)
     plt.show()

@@ -231,7 +231,7 @@ def run_grid_search_models(config):
     if "dt" in model_task:
         dt_model = DecisionTreeRegressor(random_state=42)
         dt_param_grid = {
-            'max_depth': [None, 3, 5, 10],
+            'max_depth': [1, 2, 3, 4],
             'min_samples_split': [2, 5, 10],
             'min_samples_leaf': [1, 2, 4]
         }
