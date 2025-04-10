@@ -8,7 +8,10 @@ import numpy as np
 import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report, r2_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report, r2_score, f1_score
+from config.defaults import Config
+import os
+import datetime
 
 # Configure logging for professional tracking
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -65,7 +68,7 @@ def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_m
     return normal_rmse, normal_mae, normal_r2, rescaled_rmse, rescaled_mae
 
 
-def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None, title: str = "Confusion Matrix"):
+def evaluate_classification_model(config: Config, model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None, title: str = "Confusion Matrix") -> tuple:
     """
     Evaluates a classification model on the test set.
 
@@ -75,29 +78,40 @@ def evaluate_classification_model(model, X_test: np.ndarray, y_test: np.ndarray,
         X_test (np.ndarray): Test features.
         y_test (np.ndarray): Test targets (one-hot for Keras, integers for scikit-learn).
         labels (list, optional): List of class names for confusion matrix and report.
+        title (str): Title used for the confusion matrix plot.
 
     Returns:
-        tuple: (test_loss, test_accuracy, y_pred) where test_loss is cross-entropy (Keras only),
-               test_accuracy is the accuracy score, and y_pred are predicted class indices.
+        tuple: (test_accuracy, f1_macro) where test_accuracy is the accuracy score and 
+               f1_macro is the macro-average F1 score.
     """
+
+    # Detect if it's a Keras model by checking for an 'evaluate' method.
     is_keras_model = hasattr(model, "evaluate") and callable(model.evaluate)
 
     if is_keras_model:
-        test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=1)
+        # Evaluate using Keras methods.
+        _, test_accuracy = model.evaluate(X_test, y_test, verbose=1)
         y_pred_proba = model.predict(X_test, verbose=0)
         y_pred = np.argmax(y_pred_proba, axis=1)
         y_test_int = np.argmax(y_test, axis=1)
     else:
         y_pred = model.predict(X_test)
-        test_loss = None  # No loss for non-Keras models unless computed separately
-        test_accuracy = accuracy_score(y_test, y_pred)
-        y_test_int = y_test  # Assume integer labels for non-Keras
+        if y_test.ndim > 1 and y_test.shape[1] > 1:
+            y_test_int = np.argmax(y_test, axis=1)
+        else:
+            y_test_int = y_test
+        test_accuracy = accuracy_score(y_test_int, y_pred)
+
+    # Compute macro-average F1 score: unweighted mean of the F1 scores per class.
+    f1_macro = f1_score(y_test_int, y_pred, average='macro')
 
     if labels is not None:
-        plot_confusion_matrix(y_test_int, y_pred, labels, title)
+        plot_confusion_matrix(config, y_test_int, y_pred, labels, title)
         print(classification_report(y_test_int, y_pred, target_names=labels))
     else:
         logger.warning("No labels provided; skipping confusion matrix and classification report.")
+
+    return test_accuracy, f1_macro
 
 def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None, title: str = "True vs. Predicted Values") -> None:
     """
@@ -122,20 +136,33 @@ def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = Non
     plt.title(title)
     plt.show()
 
-def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, labels: list, title: str = "Confusion Matrix") -> None:
+def plot_confusion_matrix(config: Config, y_true: np.ndarray, y_pred: np.ndarray, labels: list, title: str = "Confusion Matrix") -> None:
     """
-    Plots a confusion matrix for classification outputs.
-
+    Plots a confusion matrix for classification outputs and saves the plot using the provided configuration.
+    
     Args:
+        config (Config): Configuration object with attributes including model_task, eol_capacity, and use_aachen.
         y_true (np.ndarray): Ground-truth integer labels.
         y_pred (np.ndarray): Predicted integer labels.
         labels (list): List of class names.
+        title (str): Title for the plot.
     """
     conf_matrix = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(8, 6))
-    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=labels, yticklabels=labels)
     plt.xlabel("Predicted Label", fontsize=14)
     plt.ylabel("True Label", fontsize=14)
     plt.title(title, fontsize=16)
     plt.tick_params(axis='both', labelsize=12)
+    
+    # Determine subfolder based on config.use_aachen
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    output_dir = os.path.join("experiments", "results", bottom_map_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Build filename using config.model_task and config.eol_capacity along with a timestamp
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{config.model_task}_confusion_eol{int(config.eol_capacity * 100)}_{timestamp}.png"
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
