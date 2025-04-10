@@ -150,11 +150,11 @@ def plot_confusion_matrix(config: Config, y_true: np.ndarray, y_pred: np.ndarray
     conf_matrix = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(8, 6))
     sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", 
-                xticklabels=labels, yticklabels=labels)
+                xticklabels=labels, yticklabels=labels, annot_kws={"size": 16})
     plt.xlabel("Predicted Label", fontsize=14)
     plt.ylabel("True Label", fontsize=14)
     plt.title(title, fontsize=16)
-    plt.tick_params(axis='both', labelsize=12)
+    plt.tick_params(axis='both', labelsize=14)
     
     # Determine subfolder based on config.use_aachen
     bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
