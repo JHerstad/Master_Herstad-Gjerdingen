@@ -41,7 +41,7 @@ class Config:
 
 
     # Preprocessing
-    eol_capacity: float = 0.80  # Default EOL at 80% capacity
+    eol_capacity: float = 0.65  # Default EOL at 80% capacity
     test_cell_count: int = 3    # Default number of test cells
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression

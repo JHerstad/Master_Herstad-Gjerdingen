@@ -1,7 +1,0 @@
-{
-    "y_max": 1260.0,
-    "seq_len": 20,
-    "eol_capacity": 0.8,
-    "classification": true,
-    "timestamp": "20250422_085826"
-}
