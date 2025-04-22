@@ -52,14 +52,14 @@ class Config:
 
     
     # MIT_Stanford (Comment out for Aachen)
-    bins: list = field(default_factory=lambda: [0, 200, 400, 600, float("inf")])
-    labels: list = field(default_factory=lambda: ["0-200", "200-400", "400-600", "600+"])
+    #bins: list = field(default_factory=lambda: [0, 200, 400, 600, float("inf")])
+    #labels: list = field(default_factory=lambda: ["0-200", "200-400", "400-600", "600+"])
 
     n_bins = 4
 
-    # Aachen (WIll BE DELETED)
-    #bins: list = field(default_factory=lambda: [0, 200, 300, 400, 500, 600, 700, float("inf")])
-    #labels: list = field(default_factory=lambda: ["0-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700+"])
+    # Aachen (
+    bins: list = field(default_factory=lambda: [0, 350, 700, 1050, float("inf")])
+    labels: list = field(default_factory=lambda: ["0-350", "350-700", "700-1050", "1050+"])
 
 
     # Grid Search
