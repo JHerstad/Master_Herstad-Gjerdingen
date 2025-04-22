@@ -68,6 +68,10 @@ class Config:
     tuning_epochs: int = 50     # Default epochs for tuning
     tuner_directory: str = os.path.join("experiments", "hyperparameter_tuning")
 
+
+    epochs: int = 100 # Default epochs for training used on LSTM and CNN models
+
+
     # To be deleted - Start
     # LSTM model
     lstm_units: int = 32
@@ -75,7 +79,7 @@ class Config:
     lstm_dense_units: int = 16
     learning_rate: float = 0.001
     clipnorm: float = 1.0
-    epochs: int = 50
+    
     patience: int = 20
 
     # CNN model
