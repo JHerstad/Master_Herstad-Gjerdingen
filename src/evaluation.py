@@ -1,42 +1,58 @@
 #!/usr/bin/env python3
 """
-General module for evaluating regression models on a test set.
-Supports both Keras-based models and generic scikit-learn-like models.
+Module for evaluating regression and classification models on test data. Supports Keras and scikit-learn models, 
+computing metrics like RMSE, MAE, R^2, accuracy, and F1 score, and visualizing results with plots such as true vs. 
+predicted scatter plots and confusion matrices.
 """
 
-import numpy as np
-import logging
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, confusion_matrix, classification_report, r2_score, f1_score
-from config.defaults import Config
-import os
+# Standard library imports
 import datetime
+import logging
+import os
 
-# Configure logging for professional tracking
+# Third-party imports
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
+
+# Local imports
+from config.defaults import Config
+
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_max: float = None):
     """
     Evaluates a regression model on the test set. Works for:
-      - Keras models (i.e., tf.keras.Model) by calling model.evaluate() and model.predict().
-      - Non-Keras models (e.g., scikit-learn) by manually computing MSE and MAE.
+    - Keras models (i.e., tf.keras.Model) by calling model.evaluate() and model.predict().
+    - Non-Keras models (e.g., scikit-learn) by manually computing MSE and MAE.
 
     Args:
         model: The regression model to evaluate.
-               If it's a Keras model, it must have `evaluate()` and `predict()` methods.
-               Otherwise, it must have a `predict()` method (scikit-learn style).
+            If it's a Keras model, it must have `evaluate()` and `predict()` methods.
+            Otherwise, it must have a `predict()` method (scikit-learn style).
         X_test (np.ndarray): Test features, shape depends on the model.
         y_test (np.ndarray): Test targets (normalized or unnormalized).
         y_max (float, optional): Maximum RUL (or similar scaling factor) used for normalization.
-                                 If provided, predictions and targets are rescaled by y_max.
+                                If provided, predictions and targets are rescaled by y_max.
 
     Returns:
-        (float, float, float): A tuple containing:
-            - RMSE: Root Mean Squared Error,
-            - MAE: Mean Absolute Error (after optional rescaling),
-            - R^2: Coefficient of determination.
+        tuple: A tuple containing:
+            - rmse (float): Root Mean Squared Error on normalized data,
+            - mae (float): Mean Absolute Error on normalized data,
+            - r2 (float): Coefficient of determination (R^2) on normalized data,
+            - original_rmse (float): Root Mean Squared Error on rescaled data (if y_max provided, else np.nan),
+            - original_mae (float): Mean Absolute Error on rescaled data (if y_max provided, else np.nan).
     """
 
     # Detect if it's a Keras model by checking for an 'evaluate' method.
@@ -52,29 +68,30 @@ def evaluate_regression_model(model, X_test: np.ndarray, y_test: np.ndarray, y_m
         test_loss = mean_squared_error(y_test, y_pred)
         test_mae = mean_absolute_error(y_test, y_pred)
 
-    normal_rmse = np.sqrt(test_loss)
-    normal_mae = test_mae
-    normal_r2 = r2_score(y_test, y_pred)
+    rmse = np.sqrt(test_loss)
+    mae = test_mae
+    r2 = r2_score(y_test, y_pred)
     
     if y_max is not None:
         y_test_rescaled = y_test * y_max
         y_pred_rescaled = y_pred * y_max
         mse_rescaled = mean_squared_error(y_test_rescaled, y_pred_rescaled)
-        rescaled_rmse = np.sqrt(mse_rescaled)
-        rescaled_mae = mean_absolute_error(y_test_rescaled, y_pred_rescaled)
+        original_rmse = np.sqrt(mse_rescaled)
+        original_mae = mean_absolute_error(y_test_rescaled, y_pred_rescaled)
     else:
-        rescaled_rmse, rescaled_mae = np.nan, np.nan
+        original_rmse, original_mae = np.nan, np.nan
     
-    return normal_rmse, normal_mae, normal_r2, rescaled_rmse, rescaled_mae
+    return rmse, mae, r2, original_rmse, original_mae
 
 
-def evaluate_classification_model(config: Config, model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None, title: str = "Confusion Matrix") -> tuple:
+def evaluate_classification_model(config: Config, model, X_test: np.ndarray, y_test: np.ndarray, labels: list = None, title: str = "Confusion Matrix"):
     """
     Evaluates a classification model on the test set.
 
     Args:
+        config (Config): Configuration object with attributes for saving plots (e.g., model_task, eol_capacity, use_aachen).
         model: The classification model (Keras or scikit-learn-like).
-               Must have `evaluate()` and `predict()` (Keras) or just `predict()` (scikit-learn).
+            Must have `evaluate()` and `predict()` (Keras) or just `predict()` (scikit-learn).
         X_test (np.ndarray): Test features.
         y_test (np.ndarray): Test targets (one-hot for Keras, integers for scikit-learn).
         labels (list, optional): List of class names for confusion matrix and report.
@@ -82,7 +99,7 @@ def evaluate_classification_model(config: Config, model, X_test: np.ndarray, y_t
 
     Returns:
         tuple: (test_accuracy, f1_macro) where test_accuracy is the accuracy score and 
-               f1_macro is the macro-average F1 score.
+            f1_macro is the macro-average F1 score.
     """
 
     # Detect if it's a Keras model by checking for an 'evaluate' method.
@@ -113,7 +130,7 @@ def evaluate_classification_model(config: Config, model, X_test: np.ndarray, y_t
 
     return test_accuracy, f1_macro
 
-def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None, title: str = "True vs. Predicted Values") -> None:
+def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = None, title: str = "True vs. Predicted Values"):
     """
     Plots a 'True vs. Predicted' scatter plot for regression outputs.
 
@@ -121,6 +138,10 @@ def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = Non
         y_true (np.ndarray): Ground-truth target values.
         y_pred (np.ndarray): Model-predicted target values.
         y_max (float, optional): If normalized, rescale by multiplying with y_max.
+        title (str): Title for the scatter plot (default: "True vs. Predicted Values").
+
+    Returns:
+        None
     """
     if y_max is not None:
         y_true = y_true * y_max
@@ -136,16 +157,19 @@ def plot_true_vs_pred(y_true: np.ndarray, y_pred: np.ndarray, y_max: float = Non
     plt.title(title)
     plt.show()
 
-def plot_confusion_matrix(config: Config, y_true: np.ndarray, y_pred: np.ndarray, labels: list, title: str = "Confusion Matrix") -> None:
+def plot_confusion_matrix(config: Config, y_true: np.ndarray, y_pred: np.ndarray, labels: list, title: str = "Confusion Matrix"):
     """
     Plots a confusion matrix for classification outputs and saves the plot using the provided configuration.
-    
+
     Args:
         config (Config): Configuration object with attributes including model_task, eol_capacity, and use_aachen.
         y_true (np.ndarray): Ground-truth integer labels.
         y_pred (np.ndarray): Predicted integer labels.
         labels (list): List of class names.
-        title (str): Title for the plot.
+        title (str): Title for the plot (default: "Confusion Matrix").
+
+    Returns:
+        None
     """
     conf_matrix = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(8, 6))
