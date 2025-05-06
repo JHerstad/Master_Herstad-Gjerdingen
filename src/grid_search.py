@@ -217,7 +217,7 @@ def run_grid_search_models(config):
         dict: Best hyperparameters found for the specified model.
     """
     # Load preprocessed data using config parameters
-    X_train, X_val, _, y_train, y_val, _, metadata = load_preprocessed_data(
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
