@@ -1,5 +1,5 @@
 """
-Module for preprocessing the Aachen battery degradation dataset for RUL classification or regression.
+Module for preprocessing the Aachen and MIT_Stanford battery degradation dataset for RUL classification or regression.
 Handles data loading, EOL/RUL computation, binning, splitting, normalization, and encoding
 for both classification (CNN) and regression (LSTM) models with a configurable sequence length.
 """

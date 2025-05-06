@@ -365,16 +365,3 @@ def run_hyperparameter_search(config: Config):
 
 
     return best_params
-
-
-# Save the best model in a corresponding folder within experiments/models
-"""
-best_model = tuner.get_best_models(num_models=1)[0]
-model_file = os.path.join("experiments", "models", bottom_map_dir, f"{dataset}_{model_task}.keras")
-try:
-    os.makedirs(os.path.dirname(model_file), exist_ok=True)
-    best_model.save(model_file)
-    logger.info(f"Best model saved to: {model_file}")
-except Exception as e:
-    logger.error(f"Failed to save model to {model_file}: {str(e)}")"
-"""
