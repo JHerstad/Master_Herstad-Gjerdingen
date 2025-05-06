@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-Module for utility functions related to visualization and data analysis for the Aachen dataset
-models, specifically for RUL regression and classification experiments.
-
-This module provides plotting functions for model evaluation, ensuring reusability across
-different models (e.g., LSTM, CNN) and integration with src/models.py and src/preprocessing.py
-for thesis reproducibility.
+Module for visualization utilities to evaluate RUL regression and classification models on the
+Aachen or MIT_Stanford datasets. Provides plotting functions (scatterplots, histograms, training history)
+for model performance assessment, ensuring reusability across models (e.g., LSTM, CNN) for thesis experiments.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-from config.defaults import Config
-import os
+# Standard library imports
 import datetime
-from typing import NoReturn, Dict
+import os
 
-def plot_predictions_vs_actual(config:Config, y_test: np.ndarray, y_pred: np.ndarray, y_max: float, title: "str" = "Predicted vs Actual RUL") -> NoReturn:
+# Third-party imports
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Local imports
+from config.defaults import Config
+
+def plot_predictions_vs_actual(config:Config, y_test: np.ndarray, y_pred: np.ndarray, y_max: float, title: "str" = "Predicted vs Actual RUL"):
     """
     Creates a scatterplot comparing actual vs. predicted Remaining Useful Life (RUL) values,
     rescaled to their original range for better interpretability.
@@ -24,16 +25,21 @@ def plot_predictions_vs_actual(config:Config, y_test: np.ndarray, y_pred: np.nda
     on the Aachen dataset, highlighting the agreement between predicted and actual RUL values.
 
     Args:
+        config (Config): Configuration object with attributes including model_task, eol_capacity, and use_aachen.
         y_test (np.ndarray): Test target values (normalized) with shape (n_samples,).
         y_pred (np.ndarray): Predicted values (normalized) with shape (n_samples,).
         y_max (float): The maximum RUL value used for normalizing the targets, used for rescaling
-                      predictions and actual values to their original range.
+                    predictions and actual values to their original range.
+        title (str): Title for the scatterplot (default: "Predicted vs Actual RUL").
 
     Notes:
         - Saves the plot to experiments/results/ with a filename including the EOL capacity
-          and timestamp for versioning and reproducibility.
+        and timestamp for versioning and reproducibility.
         - Uses matplotlib for plotting, with a red dashed line representing perfect predictions.
-        - Closes the plot after saving to free memory, suitable for batch processing in thesis experiments.
+        - Displays the plot using plt.show(), suitable for interactive use in thesis experiments.
+
+    Returns:
+        None
     """
     # Set the font to Times New Roman globally for this plot
     plt.rcParams['font.family'] = 'serif'
@@ -67,7 +73,7 @@ def plot_predictions_vs_actual(config:Config, y_test: np.ndarray, y_pred: np.nda
     plt.show()
 
 
-def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoReturn:
+def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float):
     """
     Generates a histogram of residuals (differences between actual and predicted RUL values),
     rescaled to their original range for better interpretability.
@@ -79,13 +85,16 @@ def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoRe
         y_test (np.ndarray): Test target values (normalized) with shape (n_samples,).
         y_pred (np.ndarray): Predicted values (normalized) with shape (n_samples,).
         y_max (float): The maximum RUL value used for normalizing the targets, used for rescaling
-                      residuals to their original range.
+                    residuals to their original range.
 
     Notes:
         - Saves the histogram to experiments/results/ with a filename including the EOL capacity
-          and timestamp for versioning and reproducibility.
+        (from Config) and timestamp for versioning and reproducibility.
         - Uses 30 bins and blue bars with black edges for clarity, suitable for thesis visualizations.
         - Closes the plot after saving to manage memory, ideal for batch processing in thesis experiments.
+
+    Returns:
+        None
     """
     # Rescale the normalized values to their original RUL range using y_max
     y_test_rescaled = y_test * y_max
@@ -109,16 +118,23 @@ def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float) -> NoRe
     plt.savefig(os.path.join(output_dir, filename))
     plt.close()
 
-def plot_training_history(history: Dict, model_task: str) -> None:
+def plot_training_history(history: Dict, model_task: str):
     """
-    Plots the training and validation metrics over epochs dynamically based on model_task.
+    Plots the training and validation metrics (loss and task-specific metric) over epochs dynamically
+    based on model_task.
 
     Args:
         history (Dict): Training history containing 'loss', 'val_loss', and task-specific metrics
-                       ('mae' for regression, 'accuracy' for classification).
+                    ('mae' for regression, 'accuracy' for classification).
         model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
+
+    Notes:
+        - Plots both loss and a task-specific metric (MAE for regression, accuracy for classification).
+        - Displays the plot using plt.show(), suitable for interactive use in thesis experiments.
+
+    Returns:
+        None
     """
-    import matplotlib.pyplot as plt
     plt.figure(figsize=(10, 6))
 
     # Plot loss (common to both regression and classification)
