@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
 """
-Module for defining and training an LSTM model for RUL regression on the Aachen dataset.
-
-This module integrates with src/preprocessing.py for data loading and config/defaults.py
-for configuration, ensuring reproducibility and professionalism for thesis experiments.
-It focuses on a single LSTM model for regression, with plans for expansion to other models.
-Hyperparameter tuning is handled in a separate file (e.g., experiments/grid_search_lstm.py).
+Module for defining, training, and loading machine learning models (LSTM, CNN, Decision Tree, Linear Regression, Lasso) 
+for RUL prediction on Aachen or MIT_Stanford datasets. Integrates with preprocessing and configuration modules for 
+thesis experiments, focusing on reproducibility and hyperparameter tuning.
 """
 
+# Standard library imports
 import os
 import sys
-import numpy as np
 import logging
-from typing import Tuple, Dict, Optional
+import datetime
+import json
+
+# Third-party imports
+import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Sequential, Model, load_model
+from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
-    LSTM, Dense, Dropout, Masking, Input, Conv1D, BatchNormalization, MaxPooling1D, Flatten
+    LSTM, Dense, Dropout, Input, Conv1D, BatchNormalization, MaxPooling1D, Flatten
 )
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from config.defaults import Config
-import datetime
-import json
-import fnmatch
-from sklearn.model_selection import GridSearchCV
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression, Lasso
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import joblib
+import fnmatch
+
+# Local imports
+from config.defaults import Config
 
 
 # Configure logging for professional tracking
@@ -39,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Add thesis_experiment/ to sys.path for imports (if needed when run standalone)
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
-def load_preprocessed_data(model_task: str, eol_capacity: float, use_aachen: bool) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
+def load_preprocessed_data(model_task: str, eol_capacity: float, use_aachen: bool):
     """
     Loads preprocessed data and metadata from data/processed/ based on model_task and EOL capacity.
 
@@ -96,7 +95,7 @@ def load_preprocessed_data(model_task: str, eol_capacity: float, use_aachen: boo
     logger.info(f"Loaded preprocessed data and metadata for {model_task} with EOL {eol_capacity}")
     return X_train, X_val, X_test, y_train, y_val, y_test, metadata
 
-def train_lstm_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
+def train_lstm_model(config: Config):
     """
     Trains an LSTM model for RUL regression using tuned hyperparameters from config with Functional API.
     Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, and config.use_aachen.
@@ -110,7 +109,7 @@ def train_lstm_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
         Tuple: (trained model, training history).
     """
     # Load preprocessed data using config parameters.
-    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+    X_train, X_val, _, y_train, y_val, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
 
@@ -180,7 +179,7 @@ def train_lstm_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
 
     return model, history.history
 
-def train_cnn_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
+def train_cnn_model(config: Config):
     """
     Trains a CNN model for RUL classification using tuned hyperparameters from config, with Functional API.
 
@@ -192,7 +191,7 @@ def train_cnn_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
         Tuple: (trained model, training history).
     """
     # Load preprocessed data using config parameters.
-    X_train, X_val, X_test, y_train, y_val, y_test, metadata = load_preprocessed_data(
+    X_train, X_val, _, y_train, y_val, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
 
@@ -292,7 +291,7 @@ def train_cnn_model(config: Config) -> Tuple[tf.keras.Model, Dict]:
     return model, history.history
 
 
-def train_dt_model(config: Config) -> DecisionTreeRegressor:
+def train_dt_model(config: Config):
     """
     Trains the Decision Tree Regressor on the preprocessed data.
     Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
@@ -341,7 +340,7 @@ def train_dt_model(config: Config) -> DecisionTreeRegressor:
     return dt_regressor
 
 
-def train_lr_model(config: Config) -> LinearRegression:
+def train_lr_model(config: Config):
     """
     Trains the Linear Regression model on the preprocessed data.
     Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
@@ -356,7 +355,7 @@ def train_lr_model(config: Config) -> LinearRegression:
         LinearRegression: The trained Linear Regression model.
     """
     # Load preprocessed data
-    X_train, _, X_test, y_train, _, y_test, _ = load_preprocessed_data(
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
@@ -385,7 +384,7 @@ def train_lr_model(config: Config) -> LinearRegression:
     return lr_model
 
 
-def train_lasso_model(config: Config) -> Lasso:
+def train_lasso_model(config: Config):
     """
     Trains the Lasso Regression model on the preprocessed data.
     Preprocessed data is loaded internally based on config.model_task, config.eol_capacity, 
@@ -400,7 +399,7 @@ def train_lasso_model(config: Config) -> Lasso:
         Lasso: The trained Lasso Regression model.
     """
     # Load preprocessed data
-    X_train, _, X_test, y_train, _, y_test, _ = load_preprocessed_data(
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
         config.model_task, config.eol_capacity, config.use_aachen
     )
     
