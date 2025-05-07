@@ -27,37 +27,43 @@ MASTER_HERSTAD-GJERDINGEN/
 ├── config/                         # Configuration files
 │   ├── config.py                  # Centralized configuration class for the pipeline
 │   └── defaults.py                # Default settings for the project
-├── data/                          # Datasets and experiment outputs
-│   ├── Aachen/                    # Aachen battery degradation dataset
-│   ├── MIT_Stanford/              # MIT Stanford dataset (optional)
-│   ├── hyperparameters_tuning/    # Hyperparameter tuning results
-│   ├── models/                    # Trained models
-│   └── results_XAI/               # Explainability results
-├── notebooks/                     # Jupyter notebooks for experimentation
-│   ├── 01_preprocessing.ipynb    # Preprocess datasets
-│   ├── 02_grid_search.ipynb      # Perform hyperparameter tuning
-│   ├── 03_model_training.ipynb   # Train LSTM/CNN models
-│   ├── 04_model_evaluation.ipynb # Evaluate model performance
-│   └── Explainable_AI_copy.ipynb # Explore explainability (work in progress)
-├── requirements/                  # Dependency requirements
+├── data/                           # Datasets and experiment outputs
+│   ├── Aachen/                     # Aachen battery degradation dataset
+│   └── MIT_Stanford/               # MIT Stanford dataset (optional)
+├── experiments/                    # Experiment outputs
+│   ├── hyperparameters_tuning/     # Hyperparameter tuning results
+│   ├── models/                     # Trained models
+│   ├── results/                    # Raw and processed results
+│   └── results_XAI/                # Explainability results
+├── notebooks/                      # Jupyter notebooks for experimentation
+│   ├── 01_preprocessing.ipynb      # Preprocess datasets
+│   ├── 02_grid_search.ipynb        # Perform hyperparameter tuning
+│   ├── 03_model_training.ipynb     # Train LSTM/CNN models
+│   ├── 04_model_evaluation.ipynb   # Evaluate model performance
+│   └── Explainable_AI_copy.ipynb   # Explore explainability (work in progress)
+├── requirements/                   # Dependency requirements
 │   └── timeshap_env_requirements.txt  # Environment requirements for TimeSHAP explainability
-├── src/                           # Python scripts for reusable code
-│   ├── evaluation.py             # Model evaluation functions
-│   ├── grid_search.py            # Hyperparameter tuning logic
-│   ├── models.py                 # Model definitions (LSTM, CNN, etc.)
-│   ├── preprocessing.py          # Data preprocessing functions
-│   └── utils.py                  # Utility functions
-├── Testing_New_Dataset/           # Experiments with new datasets (optional)
-├── .gitignore                     # Git ignore file
-└── README.md                      # Project documentation (this file)
+├── src/                            # Python scripts for reusable code
+│   ├── evaluation.py               # Model evaluation functions
+│   ├── grid_search.py              # Hyperparameter tuning logic
+│   ├── models.py                   # Model definitions (LSTM, CNN, etc.)
+│   ├── preprocessing.py            # Data preprocessing functions
+│   └── utils.py                    # Utility functions
+├── Testing_New_Dataset/            # Experiments with new datasets (optional)
+├── .gitignore                      # Git ignore file
+└── README.md                       # Project documentation (this file)
 ```
 
 ## Datasets
 
-Place the raw datasets under `data/`:
+Place the raw datasets under the following directories:
 
-- **Aachen**: Battery degradation dataset.  
-- **MIT_Stanford** (optional): Alternate dataset for benchmarking.
+- **`data/Aachen/raw`**: Contains the raw Aachen battery degradation dataset.
+
+The preprocessed datasets used in the experiments are stored in:
+
+- **`data/Aachen/processed`**: Preprocessed Aachen dataset.  
+- **`data/MIT_Stanford/processed`**: Preprocessed MIT Stanford dataset.
 
 ## Installation
 
@@ -138,3 +144,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Authors
 
 - **Sigurd Herstad-Gjerdingen** (<your_email@domain.com>)  
+- **Johannes Øen Herstad** 
