@@ -118,13 +118,13 @@ def plot_residuals(y_test: np.ndarray, y_pred: np.ndarray, y_max: float):
     plt.savefig(os.path.join(output_dir, filename))
     plt.close()
 
-def plot_training_history(history: Dict, model_task: str):
+def plot_training_history(history: dict, model_task: str):
     """
     Plots the training and validation metrics (loss and task-specific metric) over epochs dynamically
     based on model_task.
 
     Args:
-        history (Dict): Training history containing 'loss', 'val_loss', and task-specific metrics
+        history (dict): Training history containing 'loss', 'val_loss', and task-specific metrics
                     ('mae' for regression, 'accuracy' for classification).
         model_task (str): Combined model and task identifier, e.g., "lstm_regression" or "cnn_classification".
 
