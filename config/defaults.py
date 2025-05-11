@@ -41,7 +41,7 @@ class Config:
 
 
     # Preprocessing
-    eol_capacity: float = 0.65  # Default EOL at 80% capacity
+    eol_capacity: float = 0.80  # Default EOL at 80% capacity 
     test_cell_count: int = 3    # Default number of test cells
     random_state: int = 42      # Default random seed for reproducibility
     log_transform: bool = False # Default no log transform for RUL in regression
@@ -52,14 +52,14 @@ class Config:
 
     
     # MIT_Stanford (Comment out for Aachen)
-    #bins: list = field(default_factory=lambda: [0, 200, 400, 600, float("inf")])
-    #labels: list = field(default_factory=lambda: ["0-200", "200-400", "400-600", "600+"])
+    bins: list = field(default_factory=lambda: [0, 200, 400, 600, float("inf")])
+    labels: list = field(default_factory=lambda: ["0-200", "200-400", "400-600", "600+"])
 
     n_bins = 4
 
-    # Aachen (
-    bins: list = field(default_factory=lambda: [0, 350, 700, 1050, float("inf")])
-    labels: list = field(default_factory=lambda: ["0-350", "350-700", "700-1050", "1050+"])
+    # Aachen (Comment out for MIT_Stanford)
+    #bins: list = field(default_factory=lambda: [0, 350, 700, 1050, float("inf")])
+    #labels: list = field(default_factory=lambda: ["0-350", "350-700", "700-1050", "1050+"])
 
 
     # Grid Search
@@ -108,6 +108,14 @@ class Config:
     max_iter: int = 1000         # Candidate values: 1000, 5000, 10000
     tol: float = 0.001           # Candidate values: 0.0001, 0.001
     selection: str = "cyclic"    # Candidate values: 'cyclic', 'random' 
+
+    # Decision Tree Classifier Tuning Parameters
+    criterion: str = "entropy"      # Candidate values: 'gini', 'entropy'
+
+    # Logistic Regression Tuning Parameters
+    C: float = 1.0               # Candidate values: 0.01, 0.1, 1, 10, 100
+    penalty: str = "l2"          # Candidate values: 'l2'
+    max_iter: int = 1000         # Candidate values: 1000
 
     def load_best_params(self) -> None:
         """
