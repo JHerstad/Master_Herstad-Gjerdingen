@@ -22,8 +22,8 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.linear_model import LinearRegression, Lasso
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.linear_model import LinearRegression, Lasso, LogisticRegression
 import joblib
 import fnmatch
 
@@ -431,6 +431,112 @@ def train_lasso_model(config: Config):
     joblib.dump(lasso_model, model_file)
     
     return lasso_model
+
+
+def train_dt_clf_model(config):
+    """
+    Trains the Decision Tree Classifier on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity,
+    and config.use_aachen. The model is trained using the default tuning parameters provided in the config,
+    the trained model is saved using joblib, and then returned.
+
+    Args:
+        config (Config): Configuration object with data and model parameters. It should include:
+                         - max_depth, min_samples_split, criterion for the Decision Tree Classifier.
+
+    Returns:
+        DecisionTreeClassifier: The trained Decision Tree Classifier model.
+    """
+    # Load preprocessed data
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+
+    # Flatten training data (scikit-learn expects 2D arrays)
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+
+    # Convert y_train to 1D labels (assuming one-hot encoding)
+    y_train_processed = np.argmax(y_train, axis=1)
+
+    # Create and train the Decision Tree Classifier using default parameters from config
+    dt_clf = DecisionTreeClassifier(
+        random_state=42,
+        max_depth=config.max_depth,
+        min_samples_split=config.min_samples_split,
+        criterion=config.criterion
+    )
+    dt_clf.fit(X_train_flat, y_train_processed)
+
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
+
+    # Generate a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Construct the filename with a .pkl extension and save the model using joblib
+    model_file = os.path.join(
+        base_model_dir,
+        f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_{timestamp}_best.pkl"
+    )
+    joblib.dump(dt_clf, model_file)
+
+    return dt_clf
+
+def train_lr_clf_model(config):
+    """
+    Trains the Logistic Regression model on the preprocessed data.
+    Preprocessed data is loaded internally based on config.model_task, config.eol_capacity,
+    and config.use_aachen. The model is trained using the default tuning parameters provided in the config,
+    the trained model is saved using joblib, and then returned.
+
+    Args:
+        config (Config): Configuration object with data and model parameters. It should include:
+                         - C, penalty, max_iter for the Logistic Regression.
+
+    Returns:
+        LogisticRegression: The trained Logistic Regression model.
+    """
+    # Load preprocessed data
+    X_train, _, _, y_train, _, _, _ = load_preprocessed_data(
+        config.model_task, config.eol_capacity, config.use_aachen
+    )
+
+    # Flatten training data
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+
+    # Convert y_train to 1D labels (assuming one-hot encoding)
+    y_train_processed = np.argmax(y_train, axis=1)
+
+    # Create and train the Logistic Regression model using default parameters from config
+    lr_clf = LogisticRegression(
+        random_state=42,
+        C=config.C,
+        penalty=config.penalty,
+        max_iter=config.max_iter
+    )
+    lr_clf.fit(X_train_flat, y_train_processed)
+
+    # Determine subfolder based on bottom map configuration
+    bottom_map_dir = "aachen" if config.use_aachen else "mit_stanford"
+    base_model_dir = os.path.join("experiments", "models", bottom_map_dir)
+    os.makedirs(base_model_dir, exist_ok=True)
+
+    # Generate a timestamp for consistent naming
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Construct the filename with a .pkl extension and save the model using joblib
+    model_file = os.path.join(
+        base_model_dir,
+        f"{config.project_name}_{config.model_task}_eol{int(config.eol_capacity * 100)}_{timestamp}_best.pkl"
+    )
+    joblib.dump(lr_clf, model_file)
+
+    return lr_clf
+
+
+
 
 
 
