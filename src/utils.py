@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2025 Johannes Herstad and Sigurd Gjerdingen
+# SPDX-License-Identifier: MIT
+
 """
 Module for visualization utilities to evaluate RUL regression and classification models on the
 Aachen or MIT_Stanford datasets. Provides plotting functions (scatterplots, histograms, training history)

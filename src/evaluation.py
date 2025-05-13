@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2025 Johannes Herstad and Sigurd Gjerdingen
+# SPDX-License-Identifier: MIT
+
 """
 Module for evaluating regression and classification models on test data. Supports Keras and scikit-learn models, 
 computing metrics like RMSE, MAE, R^2, accuracy, and F1 score, and visualizing results with plots such as true vs. 

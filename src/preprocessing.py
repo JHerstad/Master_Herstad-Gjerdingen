@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2025 Johannes Herstad and Sigurd Gjerdingen
+# SPDX-License-Identifier: MIT
+
 """
 Module for preprocessing the Aachen and MIT_Stanford battery degradation dataset for RUL classification or regression.
 Handles data loading, EOL/RUL computation, binning, splitting, normalization, and encoding

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2025 Johannes Herstad and Sigurd Gjerdingen
+# SPDX-License-Identifier: MIT
+
 """
 Script for performing hyperparameter tuning on LSTM or CNN models using Keras Tuner.
 Supports regression (LSTM) and classification (CNN) tasks, integrating with src/models.py,

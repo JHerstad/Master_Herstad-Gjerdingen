@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2025 Johannes Herstad and Sigurd Gjerdingen
+# SPDX-License-Identifier: MIT
+
 """
 Module for defining, training, and loading machine learning models (LSTM, CNN, Decision Tree, Linear Regression, Lasso) 
 for RUL prediction on Aachen or MIT_Stanford datasets. Integrates with preprocessing and configuration modules for 
