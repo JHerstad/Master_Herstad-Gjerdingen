@@ -9,8 +9,9 @@ This repository was developed as part of the Master’s thesis “Explainable Ti
 
 - [Project Structure](#project-structure)  
 - [Datasets](#datasets)  
+- [Experiment Workflow](#experiment-workflow)
 - [Installation](#installation)  
-- [Experiment Workflow](#experiment-workflow)  
+- [License](#license)   
 - [Authors](#authors)  
 
 ## Project Structure
@@ -109,6 +110,10 @@ This notebook serves as the primary workflow for the project. It begins by loadi
    conda env create -f requirements/master_env.yml
    conda activate master_env
    ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ## Authors
 
