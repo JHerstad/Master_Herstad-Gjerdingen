@@ -25,7 +25,7 @@ MASTER_HERSTAD-GJERDINGEN/
 ├── experiments/                    # Experiment outputs
 │   ├── hyperparameters_tuning/     # Hyperparameter tuning results
 │   ├── models/                     # Pre-Trained models
-│   ├── results/                    # Evaluation Metric Results, Intrinsic Model Parameters
+│   ├── results/                    # Evaluation Metrics, Ante-Hoc Explainations
 │   └── results_XAI/                # Post-Hoc Explainer results
 ├── notebooks/                      
 │   ├── 01_preprocessing.ipynb      
@@ -99,7 +99,7 @@ This notebook serves as the primary workflow for the project. It begins by loadi
 
    **Option A: Using `venv` (pip-based)**  
    ```bash
-   python3 -m venv venv
+   python3 -m venv myenv
    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
    pip install -r requirements/master_env_requirements.txt
    ```
