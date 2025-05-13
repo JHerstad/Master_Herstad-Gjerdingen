@@ -1,6 +1,3 @@
-# Master_Herstad-Gjerdingen
-
-
 # Explainable Time-Series Modeling for Battery Remaining Useful Life Prediction
 
 **Spring 2025 Master's Thesis**  
@@ -63,14 +60,19 @@ To redo the preprosessing, place the raw datasets under the following directorie
    git clone https://github.com/<your_org>/MASTER_HERSTAD-GJERDINGEN.git
    cd MASTER_HERSTAD-GJERDINGEN
    ```
-2. Create and activate a virtual environment (recommended):  
+2. Create and activate a virtual environment. Choose one of the following options:  
+
+   **Option A: Using `venv` (pip-based)**  
    ```bash
    python3 -m venv venv
-   source venv/bin/activate
+   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+   pip install -r requirements/master_env_requirements.txt
    ```
-3. Install dependencies:  
+
+   **Option B: Using Conda**  
    ```bash
-   pip install -r requirements/timeshap_env_requirements.txt
+   conda env create -f requirements/master_env.yml
+   conda activate master_env
    ```
 
 ## Experiment Workflow
