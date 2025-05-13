@@ -20,7 +20,7 @@ This repository was developed as part of the Master’s thesis “Explainable Ti
 MASTER_HERSTAD-GJERDINGEN/
 ├── config/                         
 │   └── defaults.py                 # Default settings for the project
-├── data/                           # Datasets and experiment outputs
+├── data/                           # Datasets processed and raw
 │   ├── Aachen/                     
 │   └── MIT_Stanford/               
 ├── experiments/                    # Experiment outputs
@@ -44,6 +44,7 @@ MASTER_HERSTAD-GJERDINGEN/
 │   ├── preprocessing.py            
 │   └── utils.py                    
 ├── .gitignore                      
+├── LICENSE 
 └── README.md                       
 ```
 
