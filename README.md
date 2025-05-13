@@ -37,8 +37,9 @@ MASTER_HERSTAD-GJERDINGEN/
 │   ├── 04_model_evaluation.ipynb   
 │   └── Explainable_AI.ipynb        # Main Notebook
 ├── requirements/                   # Dependency requirements
-│   └── timeshap_env_requirements.txt 
-├── src/                            # Python functions used in notebooks
+│   ├── master_env_requirements.txt # Pip-compatible requirements
+│   └── master_env.yml             # Conda environment YAML
+├── src/                           # Python functions used in notebooks
 │   ├── evaluation.py               
 │   ├── grid_search.py              
 │   ├── models.py                   
