@@ -53,9 +53,9 @@ The MIT/Stanford dataset requires downloading raw data and specific preprocessin
 ### MIT/Stanford Dataset
 - **Data Source**: Download the raw batch data from [https://data.matr.io/1/](https://data.matr.io/1/), where additional details about the dataset are available.
 - **Preprocessing Instructions**:
-  1. Run the `BuildPkl_Batch1.ipynb` notebook, specifying the file path for each batch (e.g., `2017-05-12_batchdata_updated_struct_errorcorrect.mat` for Batch 1, and similar paths for Batches 2 and 3).
-  2. This generates `batch.pkl` files, saved in the `MIT_Stanford/raw` directory.
-  3. Execute the `01_preprocessing.ipynb` notebook to complete the preprocessing.
+  - Run the `BuildPkl_Batch1.ipynb` notebook, specifying the file path for each batch (e.g., `2017-05-12_batchdata_updated_struct_errorcorrect.mat` for Batch 1, and similar paths for Batches 2 and 3).
+  - This generates `batch.pkl` files, saved in the `MIT_Stanford/raw` directory.
+  - Execute the `01_preprocessing.ipynb` notebook to complete the preprocessing.
 
 ### Aachen Dataset
 - **Preprocessing Instructions**: Run `01_preprocessing.ipynb`. No raw dataset files need to be downloaded or placed.
@@ -92,7 +92,7 @@ This notebook serves as the primary workflow for the project. It begins by loadi
 
 1. Clone this repository:  
    ```bash
-   git clone https://github.com/<your_org>/MASTER_HERSTAD-GJERDINGEN.git
+   git clone https://github.com/JHerstad/MASTER_HERSTAD-GJERDINGEN.git
    cd MASTER_HERSTAD-GJERDINGEN
    ```
 2. Create and activate a virtual environment. Choose one of the following options:  
